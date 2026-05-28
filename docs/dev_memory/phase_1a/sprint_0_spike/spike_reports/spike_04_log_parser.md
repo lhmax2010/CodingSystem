@@ -21,6 +21,7 @@ S0-04 只验证真实日志样本覆盖度与 parser 可行性；不实现产品
 | Primary sample commit | `c2bf5240083784312290b56bbf5a27ff6b7de1c0` (`Fix build for Clang compiler`) |
 | Parent tested | `cfaff34ff0cf9a732650eb61bfc9280cffff14d9` |
 | Fixed commit tested | `c2bf5240083784312290b56bbf5a27ff6b7de1c0` |
+| Flag-trigger experiment source | `469d442d9e1323d389d33f4689933c692c097429` |
 | GBS config | `/home/linhao/Toolchain/gbs_llvm.conf` |
 | GBS | `2.0.6` |
 | Compiler observed | `x86_64-tizen-linux-gnu-clang`, Clang `21.1.1` |
@@ -70,32 +71,95 @@ No observed hard diagnostics matched `undefined_reference`, `undefined_symbol`, 
 
 However, under the current `/home/linhao/Toolchain/gbs_llvm.conf` repos, both the parent and `c2bf524` are blocked earlier by the `libxml/xmlreader.h` include failure. A later real commit, `510e1a555166bd838f6482e7b6dc730650247795` (`Remove libxml2 include statement from pkgmgr_parser.h`), removes that include from `src/parser/include/pkgmgr_parser.h`. That explains why the current observed failure is a `cannot_find_header` sample rather than the linker/type/template failures described by `c2bf524`.
 
-## Coverage Status
+## Flag-trigger Experiments
 
-S0-04 is blocked by sample coverage. I did not fabricate logs or synthetic diagnostics.
+Per user direction, I then kept `pkgmgr-info` business source unchanged and only changed compile/link flags to trigger real migration failures. Raw logs remain under `/tmp/coding-system-s0/` and are not committed.
 
-| Acceptance | Status | Evidence |
+### Experiment A: LLD strict undefined symbols
+
+Flags:
+
+```bash
+LDFLAGS="-fuse-ld=lld -Wl,--as-needed -Wl,--no-undefined"
+```
+
+Raw logs:
+
+- `/tmp/coding-system-s0/s0_04_A_configure.log`
+- `/tmp/coding-system-s0/s0_04_A_build.log`
+
+Result: configure completed; build failed during shared-library link with LLD unresolved symbols.
+
+Observed diagnostics:
+
+| Observed type | Count | Sample feature |
 |---|---|---|
-| Collect 50 Tizen historical build failure logs | BLOCKED | 2 real GBS runs available, both same package/version and same failure class |
-| `undefined_reference` >= 80% | NOT EVALUABLE | 0 real samples observed |
-| `undefined_symbol` >= 80% | NOT EVALUABLE | 0 real samples observed |
-| `cannot_find_header` >= 80% | PARTIAL | Real sample observed; parser coverage can be validated only for this one class so far |
-| `type_mismatch` >= 70% | NOT EVALUABLE | 0 real samples observed |
-| `template_error` >= 70% | NOT EVALUABLE | 0 real samples observed |
-| false positive <= 10% | NOT EVALUABLE | Need mixed real corpus, including out-of-scope diagnostics |
+| Link unresolved symbol (`undefined_symbol` wording; `undefined_reference` class candidate) | 20 | `ld.lld: error: undefined symbol: <symbol>` followed by `>>> referenced by <source>` and object file |
 
-## Required Inputs To Continue
+Bounded excerpt:
 
-To complete S0-04 without fake data, we need additional real LLVM toolchain migration failure inputs:
+```text
+ld.lld: error: undefined symbol: pkgmgrinfo_updateinfo_get_usr_updateinfo
+>>> referenced by pkgmgr_parser_db.c
+>>>               CMakeFiles/pkgmgr_parser.dir/src/pkgmgr_parser_db.c.o:(pkgmgr_parser_register_pkg_update_info_in_usr_db)
+```
 
-- Preferred: 50 historical Tizen build failure logs from LLVM GBS/CI, with enough examples across the 5 target classes.
-- Also OK: package repositories plus failing commits/refs that reproduce under `/home/linhao/Toolchain/gbs_llvm.conf`.
-- Minimum useful next batch: at least one real package/log set for each missing class: `undefined_reference`, `undefined_symbol`, `type_mismatch`, and `template_error`.
+Representative symbols:
 
-For package-code based reproduction, please provide package repo path/name, branch or commit, and whether the failure is expected on `x86_64` with the current LLVM GBS config.
+- `pkgmgrinfo_basic_free_package`
+- `_parser_create_and_initialize_db`
+- `tzplatform_getuid`
+- `pkgmgrinfo_updateinfo_get_usr_updateinfo`
+- `pkgmgrinfo_pkginfo_get_usr_pkginfo`
+- `_parser_execute_write_queries`
+
+### Experiment B: libc++ switch
+
+Flags:
+
+```bash
+CXXFLAGS="-stdlib=libc++"
+LDFLAGS="-stdlib=libc++ -fuse-ld=lld"
+```
+
+Raw log:
+
+- `/tmp/coding-system-s0/s0_04_B_configure.log`
+
+Result: CMake did not reach project build. The C++ compiler sanity check failed because the current LLVM GBS buildroot has no `libc++` package/library available.
+
+Observed diagnostic:
+
+| Observed type | Count | Sample feature |
+|---|---:|---|
+| Missing C++ standard library (`cannot_find_library`, outside the current 5 S0-04 target classes) | 1 | `ld.lld: error: unable to find library -lc++` |
+
+Bounded excerpt:
+
+```text
+ld.lld: error: unable to find library -lc++
+x86_64-tizen-linux-gnu-clang++: error: linker command failed with exit code 1
+```
+
+I checked the current GBS repo metadata and buildroot package set; no Tizen `libc++` / `libcxx` package was visible in this buildroot or its cached repo metadata.
+
+## Triggered Type Summary
+
+This is a factual trigger summary only; S0-04 PASS/FAIL decision is deferred to user review.
+
+| Source | Naturally triggered target class |
+|---|---|
+| Historical `c2bf524`/`c2bf524^` GBS runs | `cannot_find_header` |
+| Experiment A strict LLD link | link unresolved symbol: LLD wording is `undefined_symbol`; parser taxonomy may map it to `undefined_reference` depending on S0-04 policy |
+| Experiment B libc++ switch | no target class; triggered missing `-lc++` before project build |
+
+Target classes still not naturally triggered on `pkgmgr-info` with the current inputs:
+
+- `type_mismatch`
+- `template_error`
 
 ## Conclusion
 
-S0-04 is not passed yet.
+S0-04 decision is pending.
 
-Status: BLOCKED by insufficient real log coverage. The available `pkgmgr-info` sample validates a real `cannot_find_header` shape, but it cannot support the required 5-class coverage table or 50-log accuracy calculation.
+Current real evidence from `pkgmgr-info` covers `cannot_find_header` and an LLD unresolved-symbol pattern. The libc++ experiment exposed a missing toolchain/runtime package (`-lc++`) before reaching template or type mismatch diagnostics. No synthetic logs were created.
