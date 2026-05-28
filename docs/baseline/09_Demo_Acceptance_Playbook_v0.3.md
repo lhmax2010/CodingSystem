@@ -21,8 +21,8 @@
 - Kimi 抓到：场景 3 用 template error，但 A13 中 template_error 是 best-effort — 加替代方案
 - Kimi 抓到：场景 7 用 mock incoming-handoff 需明确标注 — 加标注
 **关联文档**：
-- 《Compiler Agent v5.2-RC2.2》（文档 02，§A15 Demo 剧本基础）
-- 《Benchmark Agent v5.2-RC2.3》（文档 03，§B13 Demo 剧本基础）
+- 《Compiler Agent v5.2-RC2.3》（文档 02，§A15 Demo 剧本基础）
+- 《Benchmark Agent v5.2-RC2.4》（文档 03，§B13 Demo 剧本基础）
 - 《开发计划 v2.1.1》（文档 05，§1.2 / §3.2 M1/M2 定义）
 
 **文档目的**：把 M1 / M2 验收 Demo 的**具体逐步流程**写清楚，不只是"演示什么"，还要"怎么演示 + 怎么应对意外"。Codex 在 Phase 1A/1B 末期需要严格按此剧本准备演示环境。
@@ -637,7 +637,7 @@ $ ./scripts/run_benchmark_agent.sh \
                     outgoing_handoff:
                       target: CDN (Coding Agent)
                       reason: regression_detected
-                      disambiguator: "skill:video_player_startup"  # v0.7.2 Phase 1B
+                      disambiguator: "skill:video_player_startup"  # v0.7.3 Phase 1B
                       summary: "video player startup +35% regression"
 
 [Demo 操作]
@@ -649,7 +649,7 @@ $ cat docs/outputs/BMK-DEMO-002/handoffs/HO-*.json
 - target: CDN（Coding Agent，Phase 2 实施）
 - reason: regression_detected
 - disambiguator: skill:video_player_startup
-  → 这是 v0.7.2 Phase 1B 启用的字段，
+  → 这是 v0.7.3 Phase 1B 启用的字段，
     支持 multi-Skill task 的多个 regression 独立路由
 - summary: 一句话总结，让下游 Agent 知道发生了什么
 

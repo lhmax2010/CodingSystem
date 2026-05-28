@@ -4,7 +4,7 @@
 **日期**：2026-05-27
 **决策者**：user（PM）+ Claude + ChatGPT + Kimi（2 轮联合 review）
 **关联文档**：
-- 《CNEI v0.3.3》（现有 Live 模式设计）
+- 《CNEI v0.3.4》（现有 Live 模式设计）
 - 《Phase 1.5 总览 v0.3》（§2.3 Chromium-scale CNEI）
 - 待产出：S0-10 Scale Feasibility Spike（任务定义）
 - 待产出：CNEI v0.4 Scale Architecture（Spike 后定稿）
@@ -13,7 +13,7 @@
 
 ## 1. 背景与问题
 
-CNEI v0.3.3 当前是 **Live 按需收集证据**模式（`get_evidence_packet(error_event) -> EvidencePacket`），针对**单个编译错误**做深度诊断，强项是 build-system 感知 + negative_facts + confidence + stale 检测。
+CNEI v0.3.4 当前是 **Live 按需收集证据**模式（`get_evidence_packet(error_event) -> EvidencePacket`），针对**单个编译错误**做深度诊断，强项是 build-system 感知 + negative_facts + confidence + stale 检测。
 
 这对 Phase 1A（项目级、cmake/ninja、单 repo）是正确的。
 
@@ -57,13 +57,13 @@ Layer 1: Context-sharded RPM Semantic Index（增强，非首选）
   只持久化 package-owned semantic facts（允许解析依赖 header）
   仅在 cluster exemplar / 复杂 C++ 语义时启用
 
-Layer 2: Live Evidence Collector（CNEI v0.3.3 现有，完全不动）
+Layer 2: Live Evidence Collector（CNEI v0.3.4 现有，完全不动）
   clangd + build-system collectors + EvidencePacket + negative_facts
 ```
 
 ### 2.2 8 条核心原则（锁定方向，防止后续走偏）
 
-1. **Live CNEI 不替换、不推翻**。v0.3.3 的 Layer 2 完整保留。
+1. **Live CNEI 不替换、不推翻**。v0.3.4 的 Layer 2 完整保留。
 2. **OS scale 需要 Migration Intelligence，不是 global code graph**。问题不是"代码怎么查得快"，而是"错误/构建/符号/依赖如何组织"。
 3. **Layer 0 的 source identifier index 只做 recall，不做 truth**。tree-sitter/ctags 受 macro/typedef/template/条件编译/generated headers/arch 差异影响，只能回答"哪里可能提到这个 identifier"，不能回答"真实定义/引用关系"。confidence 标 low。
 4. **Layer 0 的主 truth source 是 diagnostics / link commands / artifact symbols / package deps**。这些来自真实构建产物，置信度高于源码 recall。

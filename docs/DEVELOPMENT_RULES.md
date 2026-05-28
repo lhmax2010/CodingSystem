@@ -42,7 +42,7 @@
 ## R2. 决策边界（人工介入门槛）
 
 **必须按规划继续，不要问**：
-- "下一步做什么"——v2.1.2 已写好 Sprint 顺序，按序推进
+- "下一步做什么"——v2.1.3 已写好 Sprint 顺序，按序推进
 - "要不要开始 Sprint N"——上一阶段 DoD 满足就开始
 - 变量命名/函数位置/测试补充/私有函数拆分/内部数据结构——自行决策
 - 只有一个合理方案时，直接做，不要"礼貌性确认"
@@ -208,9 +208,9 @@ Review AI 反馈必须形成闭环：
 |---|---|
 | R1 设计不可变 | MAIN_PROMPT v2.2 §1.3 文档冲突处理 |
 | R3 交付物 | MAIN_PROMPT v2.2 §3.3 review_packet + §3.4 dev_memory |
-| R3 覆盖率 | 开发计划 v2.1.2 check_gate.sh gate 2 |
-| R7 非功能性 | Team Contract v0.7.2 §5.6 Raw Log / Secret Redaction |
-| R13 测试命令 | 开发计划 v2.1.2 check_gate.sh（8 blocking + 1 advisory） |
+| R3 覆盖率 | 开发计划 v2.1.3 check_gate.sh gate 2 |
+| R7 非功能性 | Team Contract v0.7.3 §5.6 Raw Log / Secret Redaction |
+| R13 测试命令 | 开发计划 v2.1.3 check_gate.sh（8 blocking + 1 advisory） |
 | R14 Review 闭环 | SPRINT_1_PLUS v1.2 §3.3 review_packet 流程 |
 
 如有冲突，以本 DEVELOPMENT_RULES.md 的 git push 调整为准（针对 PR 部分），其余以 baseline 为准。

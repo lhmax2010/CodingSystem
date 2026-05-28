@@ -14,10 +14,10 @@
 - ChatGPT 抓到：Memory Infrastructure 缺 governance 规则 — 新增 §2.2.1 Memory Governance
 **适用对象**：管理层 / Codex（了解 Phase 1A/1B 写代码时需要预留什么扩展点） / 团队
 **关联文档**：
-- 《Agent Team Contract v0.7.2》（文档 00）
-- 《Compiler Agent v5.2-RC2.2》（文档 02）
-- 《Benchmark Agent v5.2-RC2.3》（文档 03）
-- 《CNEI v0.3.3》（文档 06）
+- 《Agent Team Contract v0.7.3》（文档 00）
+- 《Compiler Agent v5.2-RC2.3》（文档 02）
+- 《Benchmark Agent v5.2-RC2.4》（文档 03）
+- 《CNEI v0.3.4》（文档 06）
 - 《开发计划 v2.1.1》（文档 05）
 - 《Skill 框架 v0.2.1》（文档 07）
 
@@ -154,7 +154,7 @@ promoted to active Known Issue (confidence_default 升至 0.6)
 
 #### 2.2.1.2 必备字段
 
-每条 auto-learned Known Issue 必须有（同 v0.3.3 §7.4.1 governance schema）：
+每条 auto-learned Known Issue 必须有（同 v0.3.4 §7.4.1 governance schema）：
 
 - `version`（每次更新 + 1）
 - `owner`（推广组成员邮箱，不能是 auto）
@@ -317,7 +317,7 @@ cross-repo 共享前必须 redact：
 
 | Sprint 主题 | 预估时长 | 依赖 |
 |---|---|---|
-| **gbs / make 解析与构建集成** | 3-4 周 | Phase 1A M1 / CNEI v0.3.3 |
+| **gbs / make 解析与构建集成** | 3-4 周 | Phase 1A M1 / CNEI v0.3.4 |
 | **Memory Infrastructure（向量库 + 检索）** | 4-5 周 | Phase 1A trace 数据 |
 | **Chromium-scale CNEI（scip-clang + sharding）** | 3-4 周 | Phase 1A CNEI 主体 |
 | **Skill 容器化（block 模式 + 真隔离）** | 3-4 周 | Phase 1B Skill 框架 v0.2.1 |

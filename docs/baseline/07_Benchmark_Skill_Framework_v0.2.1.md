@@ -1,11 +1,11 @@
 # Benchmark Skill 框架设计 v0.2.1
 
 **版本**：v0.2.1（Phase 1B 实施候选，针对 ChatGPT + Kimi v0.2 review 小修）
-**状态**：Implementation Candidate（与 Benchmark Agent v5.2-RC2.3 同步成熟度）
+**状态**：Implementation Candidate（与 Benchmark Agent v5.2-RC2.4 同步成熟度）
 **关联文档**：
-- 《Agent Team Contract v0.7.2》（文档 00）—— 特别是 5a / 8.3.1 节
-- 《Benchmark Agent v5.2-RC2.3》（文档 03）—— 特别是 B5.1 / B7
-- 《CNEI v0.3.3》（文档 06）
+- 《Agent Team Contract v0.7.3》（文档 00）—— 特别是 5a / 8.3.1 节
+- 《Benchmark Agent v5.2-RC2.4》（文档 03）—— 特别是 B5.1 / B7
+- 《CNEI v0.3.4》（文档 06）
 
 **文档目的**：完整规范 Benchmark Agent 的 **用户扩展机制 Skill** —— Manifest schema、Implementation 接口、Runtime 调度、Sandbox guardrails、示例 Skill 集、用户编写指南。这是 Phase 1B 实施 Skill 体系的完整设计基线。
 
