@@ -192,6 +192,8 @@ Reference misses:
 
 These misses are edge cases in macro argument tokens, not normal function/class/type lookup failures. The `LOG` macro itself was correctly resolved in both definition and references samples.
 
+Sprint 1+ implementation note: clangd 对 token-paste 宏参数的 references 不可靠 -> CNEI 实现时，宏展开相关 symbol 的 references 应标 `confidence: low/medium`，并在 `negative_fact` 注明可能不完整。
+
 ## mtime Basic Probe
 
 S0-03 only checks that compile database mtime is readable and comparable with CMake inputs.
