@@ -1,0 +1,342 @@
+[
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/res_control_res_type_app_filter_checker.cc:See",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/pkg_request.cc:OR",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/db_change_observer.cc:Unless",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/version_pkg_filter_checker.cc:Copyright",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/mime_app_filter_checker.cc:KIND",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/default_pkg_filter_checker.hh:License",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/database/db_handle_provider.cc:Rights",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/version_pkg_filter_checker.hh:License",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/check_storage_app_filter_checker.cc:OR",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/parcel/parcelable_factory.hh:Licensed",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/support_disable_pkg_filter_checker.cc:Version",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/exec_app_filter_checker.cc:Ltd",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/check_storage_app_filter_checker.cc:All",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/request_handler_factory.hh:BASIS",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/database/cert_get_db_handler.cc:Unless",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/update_pkg_filter_checker.hh:Samsung",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/privilege_pkg_filter_checker.hh:IS",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/storage_app_filter_checker.cc:All",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/database/abstract_db_handler.hh:All",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/default_pkg_filter_checker.cc:All",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/parcel/ro_pkginfo_parcelable.cc:AS",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/type_app_filter_checker.cc:Rights",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/screen_reader_app_filter_checker.cc:ANY",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/disable_pkg_filter_checker.cc:WITHOUT",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/ui_gadget_app_filter_checker.hh:IS",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/shared_memory/shm_writer.cc:See",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/parser/include/pkgmgr_parser_db.h:Apache",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/pkgmgr_info_handle_container.cc:Licensed",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/pkgmgr_info_handle_writer.cc:Samsung",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/pkgmgrinfo_plugininfo.cc:LICENSE",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/request_handler/remove_all_cache_request_handler.cc:Copyright",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/worker_thread.hh:OR",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/worker_thread.hh:Unless",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/request_handler/create_db_request_handler.cc:Use",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/db_type.hh:Electronics",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/pkgmgrinfo_storage_status.h:You",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/pkgmgrinfo_updateinfo.cc:Electronics",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/filter_checker_provider.cc:Co",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/database/appinfo_db_handler.hh:BASIS",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/pkgmgr_info_handle_container.cc:Co",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/shared_memory/shm_manager.hh:Copyright",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/database/db_handle_provider.hh:Copyright",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/task_manage_app_filter_checker.cc:You",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/runner.cc:WITHOUT",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/pkgmgrinfo_internal.h:IS",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/author_href_pkg_filter_checker.hh:Electronics",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/worker_thread.hh:Reserved",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/parser/include/pkgmgr_parser_db.h:RW",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/remove_all_cache_request.hh:WARRANTIES",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/privilege_pkg_filter_checker.cc:OR",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/database/depinfo_db_handler.cc:Electronics",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/removable_pkg_filter_checker.cc:CONDITIONS",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/request_handler/query_request_handler.cc:Ltd",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/database/cert_set_db_handler.hh:WITHOUT",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/parser/include/pkgmgr_parser_db.h:Jayoun",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/database/update_pending_cache_handler.cc:IS",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/hw_acceleration_app_filter_checker.hh:All",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/shared_memory/shm_config.cc:LICENSE",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/ui_gadget_app_filter_checker.cc:Ltd",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/author_name_pkg_filter_checker.hh:Reserved",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/appinfo_internal.cc:LICENSE",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/pkgmgrinfo_storage_status.h:Apache",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/initialize_db_internal.cc:Apache",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/mime_app_filter_checker.cc:Reserved",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/operation_app_filter_checker.cc:You",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/database/cert_get_db_handler.hh:Rights",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/pkg_size_pkg_filter_checker.hh:CONDITIONS",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/request_type.cc:AS",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/pkg_size_pkg_filter_checker.cc:WARRANTIES",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/update_pkg_filter_checker.hh:BASIS",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/database/pkg_set_db_handler.hh:LICENSE",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/parcel/result_parcelable.cc:Rights",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/app_disable_app_filter_checker.hh:Rights",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/uri_app_filter_checker.hh:KIND",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/request_type.hh:Apache",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/ui_gadget_app_filter_checker.hh:WARRANTIES",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/support_mode_app_filter_checker.cc:Samsung",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/parser/src/pkgmgr_parser_debug.h:Samsung",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/request_handler/get_depinfo_request_handler.cc:LICENSE",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/mime_app_filter_checker.hh:CONDITIONS",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/preload_pkg_filter_checker.hh:WITHOUT",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/default_app_filter_checker.hh:Samsung",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/category_app_filter_checker.cc:BASIS",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/default_pkg_filter_checker.hh:AS",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/request_handler/request_handler_direct_access.h:AS",
+    "reason": "only_comment_or_string"
+  }
+]

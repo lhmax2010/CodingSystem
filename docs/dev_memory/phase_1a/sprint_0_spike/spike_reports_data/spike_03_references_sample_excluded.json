@@ -1,0 +1,222 @@
+[
+  {
+    "raw": "src/server/runner.cc:Rights",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/disable_pkg_filter_checker.hh:LICENSE",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/pkgmgrinfo_db.cc:Version",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/check_storage_app_filter_checker.cc:ANY",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/certinfo_internal.cc:Exception",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/pkgid_pkg_filter_checker.cc:KIND",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/component_app_filter_checker.hh:Apache",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/request_handler/request_handler_direct_access.cc:Electronics",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/preload_pkg_filter_checker.cc:KIND",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/exception.cc:IS",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/socket/data_socket.cc:CONDITIONS",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/check_storage_pkg_filter_checker.hh:Reserved",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/icon_app_filter_checker.hh:Rights",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/nodisplay_pkg_filter_checker.cc:OR",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/remove_all_cache_request.cc:Electronics",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/database/depinfo_db_handler.cc:CONDITIONS",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/screen_reader_app_filter_checker.hh:Unless",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/type_app_filter_checker.cc:Electronics",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/parcel/depinfo_parcelable.cc:Samsung",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/parser/include/pkgmgr_parser_db_queries.h:REFERENCES",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/socket/socket_path_provider.hh:See",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/runner.hh:OF",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/database/cache_db_handler.hh:OF",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/database/abstract_db_handler.cc:PRAGMA",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/request_handler/abstract_request_handler.cc:Ltd",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/database/db_handle_provider.cc:OF",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/socket/data_socket.hh:KIND",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/ui_gadget_app_filter_checker.hh:OF",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/database/cache_db_handler.cc:LICENSE",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/support_mode_app_filter_checker.cc:AS",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/pkgmgrinfo_private.cc:Jaeho",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/database/create_db_handler.hh:LICENSE",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/socket/server_socket.hh:Unless",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/ui_gadget_app_filter_checker.cc:Apache",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/shared_memory/shm_pkg_reader.cc:Copyright",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/read_only_pkg_filter_checker.cc:OR",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/database/db_handle_provider.hh:Apache",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/pkg_write_type.hh:Reserved",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/database/remove_all_cache_db_handler.hh:ANY",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/pkginfo_internal.cc:JOIN",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/parcel/create_db_parcelable.cc:You",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/runner.cc:LICENSE",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/support_disable_app_filter_checker.hh:Rights",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/pkgmgrinfo_basic.cc:Author",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/author_email_pkg_filter_checker.cc:ANY",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/pkgmgr_info_handle_container.hh:Copyright",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/check_storage_pkg_filter_checker.cc:WITHOUT",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/worker_thread.hh:OF",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/app_filter_checker/multiple_app_filter_checker.hh:CONDITIONS",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker_base.hh:KIND",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/pkgmgrinfo_basic.cc:Id",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/system_pkg_filter_checker.cc:Copyright",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/appinfo_internal.cc:No",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/common/filter_checker/pkg_filter_checker/pkgtype_pkg_filter_checker.cc:Electronics",
+    "reason": "only_comment_or_string"
+  },
+  {
+    "raw": "src/server/pkg_request.hh:OF",
+    "reason": "only_comment_or_string"
+  }
+]
