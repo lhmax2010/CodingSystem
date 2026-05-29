@@ -1,0 +1,72 @@
+{
+  "clangd_stale": true,
+  "compile_commands_provenance": "auto_cmake_ninja",
+  "degraded_reason": null,
+  "evidence_id": "EP-S0-09-STALE",
+  "facts": [
+    {
+      "confidence": "medium",
+      "confidence_modifier": "stale_compile_commands",
+      "fact_id": "F-CLANGD-DEF",
+      "kind": "symbol_definition",
+      "location": "include/pkgmgrinfo_type.h:188",
+      "note": "semantic definition from clangd",
+      "source": "clangd",
+      "symbol": "pkgmgrinfo_pkginfo_h"
+    },
+    {
+      "confidence": "medium",
+      "confidence_modifier": "stale_compile_commands",
+      "fact_id": "F-CLANGD-REF",
+      "kind": "symbol_reference",
+      "location": "include/pkgmgr-info.h:211",
+      "note": "semantic reference from clangd",
+      "source": "clangd",
+      "symbol": "pkgmgrinfo_pkginfo_h"
+    },
+    {
+      "confidence": "medium",
+      "fact_id": "F-TREESITTER-CONTEXT",
+      "kind": "syntax_context",
+      "location": "include/pkgmgr-info.h:211",
+      "note": "syntax-only fact; does not depend on compile_commands.json",
+      "source": "tree-sitter",
+      "symbol": "pkgmgrinfo_pkginfo_h"
+    },
+    {
+      "confidence": "medium",
+      "fact_id": "F-CTAGS-CANDIDATE",
+      "kind": "symbol_candidate",
+      "location": "include/pkgmgrinfo_type.h:188",
+      "note": "name-based index fact; does not depend on compile_commands.json",
+      "source": "ctags",
+      "symbol": "pkgmgrinfo_pkginfo_h"
+    },
+    {
+      "confidence": "low",
+      "fact_id": "F-RIPGREP-TEXT",
+      "kind": "text_match",
+      "location": "include/pkgmgr-info.h:211",
+      "note": "text search fact; does not depend on compile_commands.json",
+      "source": "ripgrep",
+      "symbol": "pkgmgrinfo_pkginfo_h"
+    }
+  ],
+  "schema": "evidence_packet.v1.spike",
+  "semantic_unavailable": false,
+  "stale_detection": {
+    "backend": "ClangdBackend",
+    "compile_commands_mtime": 1780057546.4688497,
+    "compile_commands_path": "/tmp/coding-system-s0/s0_09/stale/build/compile_commands.json",
+    "modified_file": "/tmp/coding-system-s0/s0_09/stale/pkgmgr-info/CMakeLists.txt",
+    "newest_cmake_mtime": 1780057556.4688497,
+    "newest_cmake_path": "/tmp/coding-system-s0/s0_09/stale/pkgmgr-info/CMakeLists.txt",
+    "stale_reason": "compile_commands.json older than newest CMakeLists.txt"
+  },
+  "task_id": "S0-09",
+  "trigger": {
+    "build_system": "cmake_ninja",
+    "symbol": "pkgmgrinfo_pkginfo_h",
+    "type": "stale_detection_spike"
+  }
+}
