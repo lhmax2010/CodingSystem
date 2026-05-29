@@ -1,0 +1,23 @@
+{
+  "cascade_error_count": 38,
+  "primary_errors": [
+    {
+      "error_type": "unknown_type_name",
+      "event_id": "ERR-S0-08-001",
+      "is_primary": true,
+      "line_no": 28,
+      "primary_id": "ERR-S0-08-001",
+      "raw_message": "/home/abuild/s0/s0_04_exp2_src/include/pkgmgrinfo_type.h:278:46: error: unknown type name 'pkgmgrinfo_pkginfo_h'; did you mean 'pkgmgrinfo_appinfo_h'?",
+      "related_symbol": "pkgmgrinfo_pkginfo_h",
+      "source_location": {
+        "column": 46,
+        "file": "/home/abuild/s0/s0_04_exp2_src/include/pkgmgrinfo_type.h",
+        "line": 278
+      }
+    }
+  ],
+  "too_many_errors_lines": 2,
+  "total_error_lines": 41,
+  "unknown_type_name_lines": 39,
+  "unrelated_error_count": 0
+}

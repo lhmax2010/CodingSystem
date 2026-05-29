@@ -1,0 +1,27 @@
+{
+  "budget": {
+    "evidence_packet_max_tokens": 4000,
+    "max_tokens_per_call": 8000,
+    "max_tokens_per_task": 50000,
+    "sprint_0_prompt_limit": 25000
+  },
+  "budget_pass": {
+    "evidence_packet": true,
+    "per_call": true,
+    "per_task_compiler_rc2_3": true,
+    "per_task_sprint_0_prompt_legacy": true
+  },
+  "by_stage": {
+    "analyze": {
+      "in": 1227,
+      "out": 0
+    },
+    "evidence_collect": {
+      "in": 0,
+      "out": 0
+    }
+  },
+  "estimator": "chars_div_4_fallback",
+  "total_in": 1227,
+  "total_out": 0
+}
