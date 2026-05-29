@@ -1,13 +1,13 @@
-# Coding System 开发计划 v2.1.3（Phase 1A/1B/1.5 Sprint 拆分）
+# Coding System 开发计划 v2.1.4（Phase 1A/1B/1.5 Sprint 拆分）
 
-**版本**：v2.1.3
+**版本**：v2.1.4
 **状态**：Implementation Plan
 **适用对象**：Codex 开发主体、用户（PM）、外部 AI Reviewer（Claude / ChatGPT / Kimi）
 **关联文档**（v2.1.2 基线，与 MAIN_PROMPT v2.2 一致）：
 - 《Agent Team Contract v0.7.3》（文档 00，Locked）
 - 《Compiler Agent v5.2-RC2.3》（文档 02）
 - 《Benchmark Agent v5.2-RC2.4》（文档 03）
-- 《CNEI v0.3.4》（文档 06）
+- 《CNEI v0.3.5》（文档 06）
 - 《Benchmark Skill 框架 v0.2.1》（文档 07）
 - 《Phase 1.5 总览 v0.3》（文档 08）
 - 《Demo & 验收剧本 v0.3》（文档 09）
@@ -20,7 +20,8 @@
 - v2.1：ChatGPT + Kimi 联合 review 反馈（Sprint 2 拆分 / merge gate / Phase 1B 启动前置 / 风险表）
 - v2.1.1：ChatGPT + Kimi v0.2 review 反馈（Sprint 0 工时修正 / Sprint 2b 弹性触发 / review_packet 字段 / merge gate 第 9 项）
 - **v2.1.2**：ChatGPT + Kimi 批次 3 修订 review，consistency cleanup（头部基线版本同步 / Sprint 0 残留 S0-10 清理 / 工时 10.5→11 天 / S0-03 工时 3→3.5 / check_gate.sh 实现细节修正）
-- **v2.1.3（本版）**：Codex Sprint 0 design review 反馈 — 关联文档版本同步到 Contract v0.7.3 / Compiler RC2.3 / Benchmark RC2.4 / CNEI v0.3.4；S0-03 注明 stale 仅 mtime 基础探测（完整验证归 S0-09，解决 Issue 1 归属重叠）；S0-07 注明 5 份样例仅验证 matcher 机制、20-30 条是 Sprint 2b 前置（解决 Issue 5 时机不清）
+- **v2.1.3**：Codex Sprint 0 design review 反馈 — 关联文档版本同步到 Contract v0.7.3 / Compiler RC2.3 / Benchmark RC2.4 / CNEI v0.3.4；S0-03 注明 stale 仅 mtime 基础探测（完整验证归 S0-09，解决 Issue 1 归属重叠）；S0-07 注明 5 份样例仅验证 matcher 机制、20-30 条是 Sprint 2b 前置（解决 Issue 5 时机不清）
+- **v2.1.4（本版）**：Codex S0-04 spike 沉淀（见 change_2）— S0-04 Sprint 0 标准明确化（机制验证用通用 C/C++ 真实样本，不限 LLD）；S2b-03 LogErrorParser 实现增强（taxonomy 扩到 10 类，加 primary/cascade 识别，支持 LLD 双格式）；关联文档同步 CNEI v0.3.4 → v0.3.5
 
 ---
 
@@ -220,7 +221,7 @@ echo "   Safe to merge."
 ## 2. 设计决策
 
 - 关键设计: [简述]
-- **与设计文档对应章节**: [必填，格式：`Compiler v5.2-RC2.3 §A8.3` / `CNEI v0.3.4 §4.3.1` / `Skill v0.2.1 §5.4` 等]（v2.1.1 强化）
+- **与设计文档对应章节**: [必填，格式：`Compiler v5.2-RC2.3 §A8.3` / `CNEI v0.3.5 §4.3.1` / `Skill v0.2.1 §5.4` 等]（v2.1.1 强化）
 - 与原计划的 deviation: [如有，必须解释]
 - **本变更涉及的 contract**: [Team Contract v0.7.3 哪些条款？]（v2.1.1 新增）
 
@@ -355,7 +356,7 @@ docs/dev_memory/
 | S0-01 | 选定 Tizen 真实 repo（cmake/ninja）| 0.5 | 1 个 repo 确认可用 |
 | S0-02 | 验证 `CMAKE_EXPORT_COMPILE_COMMANDS=ON` 能生成 compile_commands.json | 0.5 | 覆盖所有 source file |
 | S0-03 | **clangd 启动 + 索引 + 准确率抽样**（v2.1.1 合并；stale 仅 mtime 基础探测，完整验证见 S0-09）| 3.5 | < 5 min / < 4GB / definition ≥ 90% / references ≥ 85% |
-| S0-04 | LogErrorParser 在 50 份历史日志上覆盖度 | 2 | 5 类错误覆盖率 ≥ 80% |
+| S0-04 | LogErrorParser 机制验证（Sprint 0 标准明确化，见 change_2）| 2 | 5 类真实样本（通用 C/C++，不限 LLD）+ parser deterministic + 记录 LLD 格式 + Raw Log 约束 |
 | S0-05 | EvidencePacket 生成性能 | 1 | < 2s / < 4000 tokens |
 | S0-06 | Bounded log_excerpt 通过 RawDataDetector | 1 | 含 excerpt 放行、不含拦截 |
 | S0-07 | Known Issue matcher 命中/不命中验证（仅验证 matcher 机制，用 5 份样例；20-30 条完整数据是 Sprint 2b 前置，见 S2b-06）| 1 | 准确率 100%（5 份样例） |
@@ -500,7 +501,7 @@ infrastructure/code_navigation_evidence/
 |---|---|---|---|
 | S2b-01 | **clangd B++ 5-Gate 决策树**（核心）| 2 | CNEI 4.3.1 |
 | S2b-02 | **clangd_stale 检测 + confidence 降级** | 1 | CNEI 4.3.2.1 |
-| S2b-03 | LogErrorParser（5 类错误）| 1.5 | CNEI 3.2 |
+| S2b-03 | LogErrorParser（taxonomy 10 类 + primary/cascade 识别 + LLD/GNU ld 双格式）| 2 | CNEI v0.3.5 §6.3，前置:S0-04 实证数据 + 真实 Tizen build 日志 50 份（含 LLD/libc++ 真实迁移启动后样本，见 change_2）|
 | S2b-04 | LinkCommandCollector | 1 | CNEI 3.2.2 |
 | S2b-05 | CMakeContextCollector | 1 | CNEI 3.2.3 |
 | S2b-06 | KnownIssueMatcher + Known Issues YAML 初始数据 | 1 | CNEI 7.4 + 7.4.0 |

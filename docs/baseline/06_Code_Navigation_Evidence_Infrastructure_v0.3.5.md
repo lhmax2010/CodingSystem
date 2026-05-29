@@ -1,11 +1,11 @@
 # Code Navigation & Evidence Infrastructure 设计文档
 
-**版本**：v0.3.3（Phase 1A 实施候选，Sprint 0 Spike Gate 启动版）
+**版本**：v0.3.5（Phase 1A 实施候选，Sprint 0 Spike Gate 启动版）
 **状态**:**Draft / Spike Required**（必须在 Phase 1A Sprint 0 Spike Gate 中验证关键假设）
 **关联文档**：
-- 《Agent Team Contract v0.7.2》（文档 0）
-- 《Compiler Agent v5.2-RC2.2》（文档 2）
-- 《Benchmark Agent v5.2-RC2.3》（文档 3）
+- 《Agent Team Contract v0.7.3》（文档 0）
+- 《Compiler Agent v5.2-RC2.3》（文档 2）
+- 《Benchmark Agent v5.2-RC2.4》（文档 3）
 
 **文档目的**：定义 Coding System 中处理"代码导航 + 编译错误证据收集"的共享基础设施。该基础设施在 Phase 1A 主要服务 Compiler Agent，Phase 1B 起也为 Benchmark Agent 提供有限服务。
 
@@ -46,6 +46,24 @@
 - **Kimi 指出**：§4.3.2.1 stale 降级机制与 §4.3.5 Benchmark 集成的关系不清楚 —— Benchmark 调用 CNEI 时已经走 DegradedBackend 路径，stale 检测根本不会触发；需要明确说明本降级机制**仅服务于 Compiler Agent 路径**
 
 **v0.3.3 修订量**：< 200 字，纯关系澄清。
+
+**v0.3.4 修订摘要**（针对 Codex Sprint 0 design review）：
+
+- **Issue 2**：RawDataDetector 阈值与 Compiler A5.2 代码骨架冲突 —— CNEIConfig 补 `max_log_excerpts_total_chars: 6000`（L2）+ `raw_data_detector_threshold_chars: 6000`（L3），与 Contract v0.7.3 统一
+- **Issue 4**：evidence collection 失败行为未定义 —— 新增 §2.2.4 明确"degraded 优先，fail-fast 仅在完全无证据时"
+
+**v0.3.4 修订量**：约 800 字，新增 evidence 失败行为定义 + 阈值同步。
+
+**v0.3.5 修订摘要**（针对 Codex Sprint 0 S0-04 spike 数据沉淀，见 design_changes/change_2）：
+
+- **S0-04 实证数据驱动**：单 build 内 41 错误 / primary 1 / cascade 39 / token 26x 缩减
+- **§6.3 LogErrorParser 强化**：
+  - taxonomy 扩充 P0/P1/P2 共 10 类（新增 unknown_type_name 等 5 类）
+  - 新增 primary/cascade 识别强需求（Sprint 1+ 必须做，不可降级）
+  - 新增 LLD vs GNU ld 错误格式差异说明 + 解析要求
+- **EvidencePacket 生成策略**：默认对每个 primary 生成 1 个 packet（cascade 摘要进 cascade_summary 字段）
+
+**v0.3.5 修订量**：约 1500 字，§6.3 重写，taxonomy 扩充，primary/cascade 识别新增。
 
 ---
 
@@ -379,6 +397,60 @@ LLM 看到 `semantic_unavailable: true` 时：
 - prompt 中包含明确提示
 - 所有 C/C++ symbol references 视为 candidate（不是 truth）
 
+#### 2.2.4 Evidence Collection 失败行为（v0.3.4 新增，解决 Codex Sprint 0 design review Issue 4）
+
+**核心原则：degraded 优先，fail-fast 仅在完全无证据时**。
+
+CNEI 的设计哲学是"有多少证据给多少，标注 confidence"，而不是"凑不齐就放弃"。明确分级行为：
+
+| 失败层级 | 行为 | 结果 |
+|---|---|---|
+| **单个 collector 失败**（如 LinkCommandCollector 解析失败） | **degraded 继续**：该来源 facts 缺失，其他 collector 继续 | 仍产出 EvidencePacket，`collectors_run` 标注哪个失败 |
+| **单个 backend 失败**（如 clangd crash） | **降级到下一 backend**：clangd → tree-sitter → ctags → ripgrep | 仍产出 EvidencePacket，confidence 相应降低，`degraded_reason` 标注 |
+| **clangd 不可用但有其他 backend** | `semantic_unavailable=true`，仍用 tree-sitter/ctags/ripgrep | 仍产出 EvidencePacket（只是无语义级 facts） |
+| **所有 backend 都失败 + 无任何 fact** | **fail-fast** | emit `failure_class: evidence_collection_failed`，不产出空 packet |
+| **mandatory_negative_checks 无法执行**（如 build system 信息完全缺失） | **degraded**：negative_fact 标 `check_status: unavailable`，不阻断 | 仍产出 EvidencePacket，LLM 据此知道该 negative check 未完成 |
+
+**判定规则（伪代码）**：
+
+```
+def collect_evidence(error_event):
+    facts, negative_facts = [], []
+    collectors_run = []
+
+    for collector in profile.collectors:
+        try:
+            facts += collector.collect(error_event)
+            collectors_run.append({"name": collector.name, "status": "ok"})
+        except CollectorError as e:
+            collectors_run.append({"name": collector.name, "status": "failed", "reason": str(e)})
+            # degraded：继续下一个 collector，不中断
+
+    for check in profile.mandatory_negative_checks:
+        result = run_negative_check(check, error_event)
+        if result.unavailable:
+            result.check_status = "unavailable"  # degraded，不阻断
+        negative_facts.append(result)
+
+    # fail-fast 仅在完全无证据时
+    if not facts and all(nf.check_status == "unavailable" for nf in negative_facts):
+        raise EvidenceCollectionFailedError(
+            failure_class="evidence_collection_failed",
+            reason="all backends and collectors failed, no fact collected"
+        )
+
+    return EvidencePacket(facts=facts, negative_facts=negative_facts,
+                          collectors_run=collectors_run, ...)
+```
+
+**为什么 degraded 优先**：
+
+- 哪怕只有 ripgrep 的 low-confidence facts，对 LLM 也比"完全没有"有用
+- negative_facts 即使部分 unavailable，已完成的部分仍有防幻觉价值
+- 完全 fail-fast 会让 Compiler Agent 直接放弃，失去修复机会
+
+**何时 fail-fast**：只有当 facts 为空**且**所有 negative check 都 unavailable（即真的什么都没收集到）时，才 emit `evidence_collection_failed`，由 Compiler Agent 走 `not_fixable` handoff。
+
 ### 2.3 Confidence 等级
 
 ```
@@ -391,7 +463,7 @@ LLM 在使用 Evidence Packet 时**必须**根据 confidence 调整信任度。
 
 ### 2.4 Evidence Packet Size Budget
 
-**硬约束**（来自 Team Contract v0.7.2 Section 5.6）：
+**硬约束**（来自 Team Contract v0.7.3 Section 5.6）：
 
 - 单个 Evidence Packet 序列化后 token 数 ≤ `evidence_packet_max_tokens`（默认 4000）
 - 超过则裁剪策略（按优先级保留）：
@@ -1016,23 +1088,114 @@ class EvidenceCollector:
 
 ### 6.3 LogErrorParser（驱动入口）
 
-**职责**：把原始 build log 解析成 structured error events。这是 Evidence Collector 的输入。
+**职责**：把原始 build log 解析成 structured error events，**并识别 primary/cascade 关系**（v0.3.5 强化）。这是 Evidence Collector 的输入。
 
 ```python
 class LogErrorParser:
-    def parse(self, log_path: str, build_system: str) -> List[StructuredErrorEvent]:
+    def parse(self, log_path: str, build_system: str) -> ParsedErrors:
         """
-        从 build log 提取结构化错误事件。
-        每个 event 含 error_type、source_location、related_symbols 等。
+        从 build log 提取结构化错误事件，并识别 primary/cascade。
+        返回:
+          primary_errors: List[StructuredErrorEvent]   通常 1 个
+          cascade_errors: List[StructuredErrorEvent]   引用 primary 的级联错误
+          unrelated_errors: List[StructuredErrorEvent] 和已知 primary 无引用关系的独立错误
         """
 ```
 
-**关键设计**：
+**关键设计**（v0.3.5 强化，基于 S0-04 实证数据 26x token 缩减）：
 
 - 不同 build system 用不同 parser（cmake_ninja_parser / make_parser / gbs_parser）
 - 每个 parser 是 regex + heuristics 的组合
-- 输出**至多 top-5 错误事件**（不全部提取，按优先级）
-- 优先级：第一个 fatal error > 后续 cascading errors
+- **必须支持 LLD 格式 + GNU ld 格式**（两者错误文本完全不同，见下方"linker 错误格式差异"）
+- **必须输出 primary/cascade 区分**（v0.3.5 强需求，不可降级。不识别就破坏 EvidencePacket < 4000 tokens 硬约束）
+
+**Taxonomy（error_type 枚举，v0.3.5 扩充）**：
+
+| 错误类型 | 优先级 | 说明 |
+|---|---|---|
+| `cannot_find_header` | P0 | 头文件找不到 |
+| `undefined_reference` | P0 | 链接时未解析符号（linker error）。**LLD 和 GNU ld 文本不同，parser 必须都认** |
+| `undefined_symbol` | P0 | 运行时 / dlopen 时未解析符号 |
+| `type_mismatch` | P0 | 类型不匹配 |
+| `template_error` | P0 | 模板实例化/参数错误 |
+| `unknown_type_name` | **P0（v0.3.5 新增）** | typedef/struct 找不到。**S0-04 实证为 cascade 主力形态**（41 错误中 39 个） |
+| `redefinition` | P1（v0.3.5 新增） | 重定义 |
+| `incomplete_type` | P1（v0.3.5 新增） | 前向声明但使用了完整类型 |
+| `linker_script_error` | P2（v0.3.5 新增） | LLD 迁移会用到 |
+| `version_script_error` | P2（v0.3.5 新增） | LLD 迁移会用到 |
+
+P0 = Sprint 1+ LogErrorParser 实现必须包含
+P1 = Sprint 1+ 强烈建议包含
+P2 = Sprint 2 LogErrorParser 深度实现时包含（LLD/libc++ 真实迁移启动时）
+
+**Primary / Cascade 识别（v0.3.5 强需求）**：
+
+S0-04 实测数据（spike_04_log_parser.md）：
+
+```
+场景：删一个 typedef → 41 个 error
+真实 primary：1 个（被删的 typedef）
+cascade：39 个（全是 unknown_type_name 引用该 typedef）
+primary 位置：第 1 个 compiler error
+
+token 消耗：
+  raw log（Skill Workflow baseline）:        8,960 tokens
+  全 error packets（无 primary 识别）:        8,679 tokens
+  primary 1 packet（有 primary 识别）:          340 tokens
+
+primary 识别带来 26x token 缩减，且保护 EvidencePacket < 4000 tokens 硬约束
+```
+
+```python
+def identify_primary_cascade(errors: List[StructuredErrorEvent]) -> ParsedErrors:
+    """
+    启发式规则（初版，Sprint 1+ 可基于真实数据继续调优）：
+    
+    1. 第一个 compiler error 默认为 primary 候选
+       （注意：不是 linker error；compiler error 通常出现在 linker error 之前）
+    
+    2. 后续 error 如包含 primary 的 symbol / type name → 标 cascade
+       例：primary 是 "unknown type 'foo_t'"，
+           后续 "use of undeclared identifier 'foo_t_var'" → cascade
+    
+    3. 不在任何 primary 的 cascade 关系里的独立 error → 另起一个 primary
+    
+    4. 输出限制（token 经济）：
+       - primary_errors：全部输出（通常 1-3 个）
+       - cascade_errors：汇总到对应 primary（只保留摘要 + 数量 + 3 个代表性样本）
+       - unrelated_errors：每个独立 primary 各占一个 slot
+    """
+```
+
+**EvidencePacket 生成策略（v0.3.5）**：
+
+```
+默认：对每个 primary 生成 1 个 EvidencePacket
+       cascade_errors 作为该 EvidencePacket 的 "cascade_summary" 字段
+       （例："39 个相同形态的 unknown_type_name，引用同一 typedef"）
+       
+例外：Compiler Agent 明确要求逐个分析 → 多个 EvidencePacket
+       但必须警告：token 消耗会显著上升（S0-04 实测 26x 差距）
+       且需明确豁免 EvidencePacket < 4000 tokens 硬约束
+       （此例外仅限调试场景，正式修复流程不允许）
+```
+
+**Linker 错误格式差异（v0.3.5 实证记录）**：
+
+GNU ld 和 LLD 的 `undefined reference` 错误文本完全不同，parser 必须显式支持两种：
+
+```
+GNU ld 格式：
+  foo.o: In function `bar()':
+  foo.cc:42: undefined reference to `baz()'
+
+LLD 格式：
+  ld.lld: error: undefined symbol: baz()
+  >>> referenced by foo.cc:42 (path/to/foo.cc:42)
+  >>>               foo.o:(bar())
+```
+
+LogErrorParser 必须能从两种格式提取相同的 StructuredErrorEvent（error_type=`undefined_reference`, source_location, related_symbols），且 confidence 一致。
 
 ### 6.4 StructuredErrorEvent
 
@@ -1519,8 +1682,10 @@ storage:
 
 evidence_packet:
   max_total_tokens: 4000           # 整 packet token 上限
-  max_log_excerpt_chars: 3000     # 单 excerpt 字符上限
-  max_log_excerpts_per_packet: 3  # 每 packet 最多 excerpt 数
+  max_log_excerpt_chars: 3000      # 单 excerpt 字符上限（L1，Contract 5.6.3）
+  max_log_excerpts_total_chars: 6000  # 整 packet excerpt 总和上限（L2，Contract 5.6.3）
+  max_log_excerpts_per_packet: 3   # 每 packet 最多 excerpt 数
+  raw_data_detector_threshold_chars: 6000  # RawDataDetector 触发阈值（L3，与 L2 对齐，Contract 5.6.3 v0.7.3）
 
 known_issues:
   yaml_path: "data/known_issues.yaml"
