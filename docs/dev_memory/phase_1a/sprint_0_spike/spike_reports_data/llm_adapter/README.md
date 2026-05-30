@@ -40,7 +40,22 @@
 
 ---
 
-## 开发期使用(Kimi)
+## 开发期使用(Kimi Code)
+
+S0-A spike 默认用 **Kimi Code**(Kimi 会员的 coding 体系),用你 Kimi Code Console 创建的 API key。
+
+### 两个独立的 Kimi 体系(重要,别混)
+
+| | Kimi Code(active_provider=kimi_code,开发期用) | Moonshot Open Platform(active_provider=kimi,备用) |
+|---|---|---|
+| 注册 | Kimi 会员 + Kimi Code Console | platform.moonshot.ai/.cn |
+| key | sk-... ~72 字符 | sk-... |
+| endpoint | api.kimi.com/coding/v1/chat/completions | api.moonshot.ai/v1/chat/completions |
+| 模型 | kimi-for-coding | kimi-k2.6 |
+| 计费 | Kimi 会员 Kimi Code 额度 | pay-as-you-go |
+| env 变量 | KIMI_CODE_API_KEY | MOONSHOT_API_KEY |
+
+**两套 key 不通用**!Kimi Code 的 key 发给 Moonshot Open Platform 会 401,反之亦然。
 
 ### 安装依赖
 
@@ -51,8 +66,21 @@ pip install pyyaml requests
 ### 配置 API key
 
 ```bash
-export MOONSHOT_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
+# Kimi Code(默认)
+export KIMI_CODE_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
+
+# 如果将来切到 Moonshot Open Platform,改 active_provider 为 kimi 并设:
+# export MOONSHOT_API_KEY=sk-yyyyyyyyyy
 ```
+
+### Kimi Code 合规要求
+
+Kimi Code 社区准则明确:
+- **必须保持真实 User-Agent 标识**(adapter 已设为 `Coding-Spike/1.0`)
+- 不能伪装成其他被授权客户端(如 Claude Code / Roo Code)
+- 否则可能导致会员权益暂停
+
+quota 与日常 Kimi Code IDE/CLI **共享**(每 5h 滚动窗口约 300-1200 requests)。S0-A 12 次调用占比极低。
 
 ### 快速测试
 

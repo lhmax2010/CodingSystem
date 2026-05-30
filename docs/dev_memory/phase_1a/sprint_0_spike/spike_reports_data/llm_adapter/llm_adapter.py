@@ -386,6 +386,24 @@ class CustomAdapter(_OpenAICompatibleAdapter):
     pass
 
 
+class KimiCodeAdapter(_OpenAICompatibleAdapter):
+    """Kimi Code (Moonshot Kimi 会员的 coding 体系) — OpenAI 兼容协议。
+
+    与 KimiAdapter 的区别:
+    - KimiAdapter 调 Moonshot Open Platform (api.moonshot.ai/v1),
+      用 platform.moonshot.ai 注册的 API key,pay-as-you-go 计费
+    - KimiCodeAdapter 调 Kimi Code (api.kimi.com/coding/v1),
+      用 Kimi Code Console 创建的 API key,使用 Kimi 会员的 Kimi Code 额度
+
+    模型 ID 固定为 `kimi-for-coding`(后端自动映射最新 coding 模型,客户端不动)。
+
+    合规要求(Kimi Code 社区准则):
+    - 必须设置真实的 User-Agent 标识(不能伪装成其他被授权的客户端如 Claude Code/Roo Code)
+    - quota 与日常 Kimi Code IDE/CLI 共享(每 5h 滚动窗口约 300-1200 requests)
+    """
+    pass
+
+
 # ============================================================================
 # Anthropic Claude adapter
 # ============================================================================
@@ -480,6 +498,7 @@ class ClineAdapter(LLMAdapter):
 
 _ADAPTERS = {
     'kimi': KimiAdapter,
+    'kimi_code': KimiCodeAdapter,   # Kimi 会员 Kimi Code 额度(开发期默认)
     'claude': ClaudeAdapter,
     'openai': OpenAIAdapter,
     'cline': ClineAdapter,

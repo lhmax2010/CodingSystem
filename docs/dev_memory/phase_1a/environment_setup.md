@@ -71,13 +71,30 @@ pip install pyyaml requests
 
 ## 3. LLM 接入
 
-### 3.1 开发期(Kimi)
+### 3.1 开发期(Kimi Code)
+
+S0-A spike 默认使用 **Kimi Code**(Kimi 会员的 coding 体系):
 
 ```bash
-export MOONSHOT_API_KEY=<your_kimi_api_key>
+export KIMI_CODE_API_KEY=<your_kimi_code_api_key>
 ```
 
-API key 来源:https://platform.moonshot.ai/(国际版)或 https://platform.moonshot.cn/(国内版)。
+API key 来源:**Kimi Code Console**(需要 Kimi 会员账户 + 启用 Kimi Code 额度)。
+不要与 Moonshot Open Platform 的 API key 混淆(两个独立体系,key 不通用)。
+
+**合规提醒**:Kimi Code 要求保持真实 User-Agent 标识,adapter 已设为 `Coding-Spike/1.0`,不要改成其他被授权客户端的标识(否则违反 Kimi Code 社区准则)。
+
+quota 与日常 Kimi Code IDE/CLI 共享(每 5h 滚动窗口约 300-1200 requests)。
+
+#### 备用:Moonshot Open Platform
+
+如果将来想切换到 Moonshot Open Platform(pay-as-you-go,api.moonshot.ai/v1):
+
+```bash
+# 1. 在 llm_config.yaml 改 active_provider: kimi
+# 2. 设置 MOONSHOT_API_KEY(来源 platform.moonshot.ai/.cn)
+export MOONSHOT_API_KEY=<your_moonshot_api_key>
+```
 
 详见 `docs/dev_memory/phase_1a/sprint_0_spike/spike_reports_data/llm_adapter/README.md`。
 
@@ -129,7 +146,8 @@ CodingSystem/                      # Codex workspace = repo 根
 
 4. **设置 LLM API key**(见 §3):
    ```bash
-   export MOONSHOT_API_KEY=<key>
+   # S0-A 默认 Kimi Code
+   export KIMI_CODE_API_KEY=<key>
    ```
 
 5. **跑 LLM Adapter smoke test 验证**:

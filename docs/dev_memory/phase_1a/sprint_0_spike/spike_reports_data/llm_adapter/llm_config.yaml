@@ -12,23 +12,38 @@
 # 当前激活的 provider
 # 可选值:kimi / claude / openai / cline / custom
 # -----------------------------------------------------------------------------
-active_provider: kimi
+active_provider: kimi_code
 
 # -----------------------------------------------------------------------------
 # 各 provider 配置（只有 active_provider 指向的会被使用）
 # -----------------------------------------------------------------------------
 providers:
 
-  # ---------- Kimi (Moonshot AI) — 开发期默认 ----------
+  # ---------- Kimi Code (Kimi 会员 coding 体系) — 开发期默认 ----------
+  # 用 Kimi 会员的 Kimi Code 额度，key 来自 Kimi Code Console
+  # 与下面 kimi (Moonshot Open Platform) 是两个独立体系,key/endpoint/model 都不同
+  kimi_code:
+    api_base: https://api.kimi.com/coding/v1/chat/completions
+    model: kimi-for-coding     # 稳定 ID,后端自动映射最新 coding 模型
+    api_key_env: KIMI_CODE_API_KEY    # 注:从 Kimi Code Console 创建,长度 ~72
+    max_tokens: 4096
+    temperature: 0.0           # spike 要可复现,固定 0
+    timeout_sec: 60
+    extra_headers:
+      # Kimi Code 合规要求:必须保持真实身份标识,不能伪装其他被授权客户端
+      # (Kimi 社区准则:篡改 User-Agent 可能导致会员权益暂停)
+      User-Agent: "Coding-Spike/1.0"
+
+  # ---------- Kimi (Moonshot Open Platform) — 备用 ----------
+  # 用 platform.moonshot.ai/.cn 注册的 API key,pay-as-you-go 计费
+  # 与上面 kimi_code 是两个独立体系
   kimi:
     api_base: https://api.moonshot.ai/v1/chat/completions
     # 如在国内访问 .ai 不稳，改为 https://api.moonshot.cn/v1/chat/completions
     model: kimi-k2.6
-    # 256k context、agentic coding 强、OpenAI 兼容协议
-    # 旧的 moonshot-v1-32k 已 deprecated，统一用 kimi-k2.6
     api_key_env: MOONSHOT_API_KEY
     max_tokens: 4096
-    temperature: 0.0           # spike 要可复现，固定 0
+    temperature: 0.0
     timeout_sec: 60
     extra_headers: {}
 

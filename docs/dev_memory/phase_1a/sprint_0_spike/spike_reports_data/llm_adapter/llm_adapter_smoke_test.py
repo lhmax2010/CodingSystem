@@ -8,7 +8,7 @@ LLM Adapter smoke test — Codex review 强化版
 7 项验证(Codex review 后从 5 项扩到 7 项):
     1. 配置加载
     2. API key 读取(active provider)
-    3. 5 个 adapter 都能实例化(catch 早期配置错误)
+    3. 6 个 adapter 都能实例化(catch 早期配置错误)
     4. active adapter 最小 API 调用
     5. token usage / duration 返回正常
     6. trace 文件生成 + 文件权限检查(强化:缺失 FAIL,不是 WARN)
@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from llm_adapter import (
     get_adapter, LLMAdapterError, LLMResponse,
-    KimiAdapter, ClaudeAdapter, OpenAIAdapter, ClineAdapter, CustomAdapter,
+    KimiAdapter, KimiCodeAdapter, ClaudeAdapter, OpenAIAdapter, ClineAdapter, CustomAdapter,
     _ADAPTERS,
 )
 import yaml
@@ -60,8 +60,8 @@ def smoke_test(config_path: str = 'llm_config.yaml') -> bool:
         print(f"   FAIL {e}")
         return False
     
-    # ---- 3. 5 个 adapter 都能实例化(Codex review 新增)----
-    step(3, 7, "5 个 adapter 都能实例化")
+    # ---- 3. 6 个 adapter 都能实例化(Codex review 新增)----
+    step(3, 7, "6 个 adapter 都能实例化")
     with open(config_path) as f:
         cfg = yaml.safe_load(f)
     common = cfg.get('common', {})
