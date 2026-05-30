@@ -186,11 +186,6 @@ Token comparison for `/tmp/coding-system-s0/s0_04_exp2_build.log`:
 | B one packet per compiler `error:` line | 41 | 8,679 | 25.53x |
 | C one primary packet with cascade summary | 1 | 340 | 1.00x |
 
-注：26x 是 controlled minimal-primary 对比场景（raw log 全量 vs 仅 primary
-error 文本）；含完整 EvidencePacket facts 后实现侧约 9x（见 S0-05/S0-08
-packet 数据）；典型独立错误场景约 2-4x。**任一数字都不是生产普遍值**，对外
-汇报必须注明场景限定。
-
 Generated comparison artifacts:
 
 - `/tmp/coding-system-s0/s0_04_exp2_error_packets.json`

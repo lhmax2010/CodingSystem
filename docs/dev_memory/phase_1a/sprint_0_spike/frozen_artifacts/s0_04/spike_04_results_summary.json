@@ -1,0 +1,44 @@
+{
+  "source": {
+    "report_path": "frozen_artifacts/s0_04/spike_04_log_parser.md",
+    "source_commit": "26b0be488dbd8c535314cc55e58f3fa5f37d2ed5",
+    "reconstruction_note": "Historical commit did not contain generated result JSON; this audit summary is transcribed from the frozen report and contains no raw log."
+  },
+  "parser": {
+    "artifact": "frozen_artifacts/s0_04/spike_04_log_parser.py",
+    "rule_version": "spike_04_generic_v1",
+    "sha256_at_experiment_start": "9a86dc8ad0de7a4f0819ee1ae36acb736374d86104fc76585f939aae2363e544",
+    "primary_policy": "first_parsed_error_only_no_cascade_analysis"
+  },
+  "basic_type_coverage": {
+    "cannot_find_header": 1,
+    "undefined_reference": 5,
+    "undefined_symbol_lld": 20,
+    "type_mismatch": 3,
+    "template_error": 1,
+    "total_real_samples": 30
+  },
+  "cascade_experiment": {
+    "trigger": "rename widely used public typedef pkgmgrinfo_pkginfo_h",
+    "total_error_lines": 41,
+    "unknown_type_name_lines": 39,
+    "too_many_errors_lines": 2,
+    "parser_parsed_independent_errors": 0,
+    "parser_identified_primary": false,
+    "ground_truth_primary_position": 1
+  },
+  "determinism": {
+    "runs": 3,
+    "sha256_all_runs": "8d115d3a3e385d823e81bd9d79c63b058d042757e144be3a0ee2a7bdec9f93ff"
+  },
+  "token_comparison": {
+    "estimator": "ceil(chars / 4)",
+    "raw_build_log_tokens": 8960,
+    "one_packet_per_error_tokens": 8679,
+    "primary_packet_with_cascade_summary_tokens": 340,
+    "raw_vs_primary_ratio": 26.35,
+    "all_packets_vs_primary_ratio": 25.53,
+    "scope_note": "Controlled minimal-primary comparison only; not a production-general token-reduction value."
+  },
+  "raw_log_policy": "raw logs and generated parser/token JSON stayed under /tmp/coding-system-s0/ and are not committed"
+}

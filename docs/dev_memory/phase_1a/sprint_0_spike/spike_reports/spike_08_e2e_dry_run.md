@@ -1,5 +1,7 @@
 # S0-08 End-to-End Dry Run
 
+> ⚠️ 命名修正（外部 review 后）：本 gate 实际是 "pre-LLM pipeline dry run"，不是 end-to-end。它停在 mocked LLM 入口，无 patch / apply / rebuild。真正的 end-to-end 修复闭环验证在 S0-A Repair Loop Spike。
+
 ## Scope
 
 S0-08 validates the dry-run pipeline boundary:
@@ -68,8 +70,13 @@ Primary/cascade accounting:
 | EvidencePackets generated | 1 |
 | per-error packets avoided | 40 |
 
-This validates the v0.3.5 strategy end to end: the cascade log did not produce
-41 EvidencePackets.
+Precise wording after external review: 41 error lines = 1 primary + 38
+same-symbol cascade + 2 too-many-errors. The earlier shorthand "39 cascade"
+was imprecise because one of the 39 `unknown_type_name` diagnostics is the
+primary.
+
+This validates the v0.3.5 strategy through the pre-LLM pipeline boundary: the
+cascade log did not produce 41 EvidencePackets.
 
 ## Trace Completeness
 
@@ -130,7 +137,8 @@ contain the full raw log. The raw build log remains under `/tmp/coding-system-s0
 
 S0-08 decision is pending user review.
 
-Observed result: the real S0-04 cascade failure traversed the full dry-run
+Observed result: the real S0-04 cascade failure traversed the pre-LLM dry-run
 pipeline to the mocked LLM entrance, produced complete trace artifacts, stayed
 well inside token budgets, and generated one primary EvidencePacket rather than
-one packet per compiler error.
+one packet per compiler error. It did not validate patch generation, apply,
+rebuild, or bounded repair.
