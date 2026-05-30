@@ -98,7 +98,8 @@ Sprint 0 验证了"失败 → 解析 → 收集证据 → 组装 EvidencePacket"
 
 ### Part 2 验收标准
 
-- [ ] 每个错误 × 4 个变体（A/B/C/D）都真调了 LLM，记录 patch
+- [ ] 每个错误 × 4 个变体（A/B/C/D）**× 3 次采样** = 36 次都真调了 LLM，记录 patch
+      （Kimi K2.6 强制 temperature=1，需多次采样 + 多数票判定，详见 README "K2 quirks" 章节）
 - [ ] 每个 patch 都做了：编译通过性测试 + 人工语义 review
 - [ ] 输出对比表：变体 × 错误 → (编译通过? / 语义正确? / token 数)
 - [ ] 给出明确结论：
@@ -133,10 +134,12 @@ docs/dev_memory/phase_1a/sprint_0_spike/spike_reports_data/llm_adapter/
 
 ### 开发期默认:Kimi
 
-- API endpoint: `https://api.moonshot.ai/v1/chat/completions`
+- API endpoint: `https://api.moonshot.cn/v1/chat/completions`（国内可达，smoke test 已验证）
 - 模型: `kimi-k2.6`（256k context，agentic coding 强，OpenAI 兼容协议）
 - 环境变量: `MOONSHOT_API_KEY`（PM 提供 key，永不写死）
-- temperature=0.0（spike 要可复现）
+- **temperature**：K2.6 强制 1.0（模型决定），adapter 自动剥离 config 里的 temperature 字段
+  详见 adapter README "K2 quirks" 章节
+- **A/B 实验随机性处理**：每个 prompt 跑 3 次，多数票判定（2/3 PASS 即 PASS）
 
 ### token_usage 字段语义（重要,避免外层调用混乱）
 

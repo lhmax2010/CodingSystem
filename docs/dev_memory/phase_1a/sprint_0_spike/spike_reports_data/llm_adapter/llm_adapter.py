@@ -309,12 +309,23 @@ class _OpenAICompatibleAdapter(LLMAdapter):
             messages.append({'role': 'system', 'content': system})
         messages.append({'role': 'user', 'content': prompt})
 
+        # 构造请求 payload(OpenAI 兼容格式)
         payload = {
             'model': self.config['model'],
             'messages': messages,
             'max_tokens': self.config.get('max_tokens', 4096),
             'temperature': self.config.get('temperature', 0.0),
         }
+
+        # ---- Model-specific quirks ----
+        # 某些 Moonshot Kimi K2 系列模型有 temperature 硬约束(只接受固定值,详见 cline/cline#10544)
+        # 这里检测 model 名字模式,主动剥离 temperature,让服务端使用其默认值
+        # 当前已知:kimi-k2.5 / kimi-k2.6 系列(.5 .6 之类小数版本)
+        # 不影响 kimi-k2-0905-preview / kimi-k2-turbo-preview 等带后缀的旧版本
+        model_name = self.config['model']
+        if any(model_name.startswith(prefix) for prefix in ('kimi-k2.5', 'kimi-k2.6', 'kimi-k2.7')):
+            payload.pop('temperature', None)
+            # 注:剥离后服务端会用其默认 temperature(通常为 1),A/B 测试需要多次采样消化随机性
 
         headers = {
             'Authorization': f'Bearer {api_key}',
@@ -388,15 +399,15 @@ class CustomAdapter(_OpenAICompatibleAdapter):
 
 class KimiCodeAdapter(_OpenAICompatibleAdapter):
     """Kimi Code (Moonshot Kimi 会员的 coding 体系) — OpenAI 兼容协议。
-
+    
     与 KimiAdapter 的区别:
     - KimiAdapter 调 Moonshot Open Platform (api.moonshot.ai/v1),
       用 platform.moonshot.ai 注册的 API key,pay-as-you-go 计费
     - KimiCodeAdapter 调 Kimi Code (api.kimi.com/coding/v1),
       用 Kimi Code Console 创建的 API key,使用 Kimi 会员的 Kimi Code 额度
-
+    
     模型 ID 固定为 `kimi-for-coding`(后端自动映射最新 coding 模型,客户端不动)。
-
+    
     合规要求(Kimi Code 社区准则):
     - 必须设置真实的 User-Agent 标识(不能伪装成其他被授权的客户端如 Claude Code/Roo Code)
     - quota 与日常 Kimi Code IDE/CLI 共享(每 5h 滚动窗口约 300-1200 requests)

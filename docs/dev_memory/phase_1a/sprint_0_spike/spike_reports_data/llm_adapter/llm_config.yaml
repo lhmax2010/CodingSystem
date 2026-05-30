@@ -34,16 +34,23 @@ providers:
       # (Kimi 社区准则:篡改 User-Agent 可能导致会员权益暂停)
       User-Agent: "Coding-Spike/1.0"
 
-  # ---------- Kimi (Moonshot Open Platform) — 备用 ----------
+  # ---------- Kimi (Moonshot Open Platform) — S0-A 默认 ----------
   # 用 platform.moonshot.ai/.cn 注册的 API key,pay-as-you-go 计费
   # 与上面 kimi_code 是两个独立体系
+  # 模型说明(详见 README 的 Kimi K2 quirks 章节):
+  #   K2.5/K2.6 系列模型有 temperature 硬约束(只接受 1.0,模型决定)
+  #   KimiAdapter 自动检测 K2.5/K2.6/K2.7 前缀的模型,主动剥离 temperature 字段
+  #   下方 temperature: 0.0 对 K2.6 不生效,但保留供其他模型用
+  #   如需 deterministic 实验,换 model: kimi-k2-0905-preview(支持 temperature 0-1)
+  #   但 0905-preview 的 coding 能力弱于 K2.6
   kimi:
-    api_base: https://api.moonshot.ai/v1/chat/completions
-    # 如在国内访问 .ai 不稳，改为 https://api.moonshot.cn/v1/chat/completions
+    api_base: https://api.moonshot.cn/v1/chat/completions
+    # PM 在国内访问 .cn 已验证可达(smoke test 已通信成功)
+    # 如需国际版,改为 https://api.moonshot.ai/v1/chat/completions
     model: kimi-k2.6
     api_key_env: MOONSHOT_API_KEY
     max_tokens: 4096
-    temperature: 0.0
+    temperature: 0.0   # 对 K2.6 系列实际不生效(adapter 剥离),保留供其他模型
     timeout_sec: 60
     extra_headers: {}
 

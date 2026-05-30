@@ -145,6 +145,56 @@ contract_budget['by_stage'][current_stage]['out'] += response.token_usage['out']
 
 ---
 
+## Kimi K2 系列模型 quirks
+
+Moonshot 的 Kimi K2.5 / K2.6 系列模型有几个非标准约束,adapter 已经处理,但 PM/外层调用方需要了解:
+
+### Quirk 1:temperature 硬约束(只接受 1.0)
+
+K2.5 和 K2.6 是 thinking 模型,**官方硬性规定 temperature = 1**,任何其他值会返回 HTTP 400:
+
+```
+{"error": {"message": "invalid temperature: only 1 is allowed for this model"}}
+```
+
+**adapter 自动处理**:`_OpenAICompatibleAdapter.call()` 检测到 model 名以 `kimi-k2.5`/`kimi-k2.6`/`kimi-k2.7` 开头时,**主动剥离 temperature 字段**,让 Moonshot 用模型默认值。
+
+外层调用方**不需要做任何事**,正常 `temperature: 0.0` 写在 config 里也无所谓,adapter 会过滤。
+
+参考:[cline/cline#10544](https://github.com/cline/cline/issues/10544)、[hermes-agent#12835](https://github.com/NousResearch/hermes-agent/issues/12835)
+
+### Quirk 2:S0-A A/B 实验需要多次采样
+
+因为 K2.5/K2.6 强制 temperature=1,A/B 实验有随机性。**为了得到可信对比**,S0-A 设计:
+
+```
+每个 prompt × 4 变体(A/B/C/D)→ 跑 3 次取多数票
+总调用 = 3 错误 × 4 变体 × 3 次 = 36 次
+```
+
+每次响应记录:
+- 是否成功生成 patch
+- patch 是否能编译
+- patch 是否语义正确(人工)
+
+3 次中至少 2 次成功 → 该 (错误, 变体) 算 "PASS"
+
+这是 LLM A/B 评测的标准做法(参考 OpenAI eval 框架的 majority vote 模式)。
+
+### Quirk 3:如需 deterministic,换 K2-0905-preview
+
+如果将来某个 spike 需要严格 deterministic(temperature=0 同样输入完全一致输出):
+- 改 model: `kimi-k2-0905-preview`
+- coding 能力略弱于 K2.6,但可设 temperature=0~1
+- adapter 不会剥离它的 temperature(只匹配 K2.5/K2.6/K2.7 前缀)
+
+S0-A 选 K2.6 + 3 次采样,理由:
+1. 更接近 Sprint 1+ 实际部署用的模型
+2. K2.6 是 Moonshot 当前最强 coding 模型
+3. 多次采样 + 多数票是工业标准
+
+---
+
 ## 公司部署:接入步骤
 
 公司 AI 部署到生产环境时,按以下步骤接入公司 LLM。
