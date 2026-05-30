@@ -1,24 +1,28 @@
 # Codex 主 Prompt v2.2（Coding System 实施总指南）
 
-**版本**：v2.4（对应文档基线 v0.7.3 / RC2.3 / RC2.4 / v0.3.5 / v2.1.4 / v0.2.1 / v0.3）
+**版本**：v2.5（对应文档基线 v0.7.3 / RC2.3 / RC2.4 / v0.3.5 / v2.1.5 / v0.2.1 / v0.3）
+
+**v2.5 修订摘要**（ChatGPT + Kimi 外部 review 修正，见 design_changes/change_3）：
+- Sprint 0 定性降级；进 Sprint 1 新增强制前置 S0-A（Repair Loop + LLM 修复 A/B）+ S0-C（跨包最小）+ 可审计性修复 + 定性修正
+- 开发计划 v2.1.5 → v2.1.5
 
 **v2.4 修订摘要**（Codex Sprint 0 S0-04 spike 沉淀，见 design_changes/change_2）：
 - CNEI v0.3.5 → v0.3.5（LogErrorParser taxonomy 扩到 10 类 + primary/cascade 识别 + LLD/GNU ld 双格式）
-- 开发计划 v2.1.4 → v2.1.4（S0-04 标准明确化 + S2b-03 LogErrorParser 实现增强）
+- 开发计划 v2.1.5 → v2.1.5（S0-04 标准明确化 + S2b-03 LogErrorParser 实现增强）
 
 **v2.3 修订摘要**（Codex Sprint 0 design review 后，6 个 Issue 修复对应的 baseline 版本同步）：
 - Contract v0.7.2 → v0.7.3（RawDataDetector 阈值统一）
 - Compiler RC2.2 → RC2.3（补 verify_timeout_sec）
 - Benchmark RC2.3 → RC2.4（token_usage 对齐 Contract）
 - CNEI v0.3.3 → v0.3.4（evidence 失败行为 + 阈值同步）
-- 开发计划 v2.1.4 → v2.1.4（stale 归属 + KI 数量澄清）
+- 开发计划 v2.1.5 → v2.1.5（stale 归属 + KI 数量澄清）
 - SPRINT_0_PROMPT v1.1 → v1.2（stale 归属统一到 S0-09）
 
 **v2.2 修订摘要**（针对 ChatGPT + Kimi v2.1 review，consistency cleanup）：
 
 - ChatGPT + Kimi 都抓到：MAIN_PROMPT 残留 "10 个子任务 / 10 项验证" 旧口径 — 统一为 9 个任务 / 9 项验证
 - ChatGPT + Kimi 都抓到：MAIN_PROMPT §3.1 仍写 `sprint-N-task-X` 作为默认 branch — 改为 sprint-N-main 默认
-- 关联基线版本同步到 v2.1.4 / v0.3（开发计划 + Phase 1.5 + Demo）
+- 关联基线版本同步到 v2.1.5 / v0.3（开发计划 + Phase 1.5 + Demo）
 
 **v2.1 修订摘要**（针对 ChatGPT + Kimi v2 review，文档一致性收尾）：
 
@@ -68,7 +72,7 @@
 4. `06_Code_Navigation_Evidence_Infrastructure_v0.3.5.md` ← CNEI
 
 **实施计划层**：
-5. `05_Phased_Development_Plan_v2.1.4.md` ← Sprint 拆分 + DoD + dev_memory + merge gate
+5. `05_Phased_Development_Plan_v2.1.5.md` ← Sprint 拆分 + DoD + dev_memory + merge gate
 
 **Skill 框架**：
 6. `07_Benchmark_Skill_Framework_v0.2.1.md` ← Phase 1B 用户扩展机制（Sprint 0B 后用）
@@ -118,16 +122,16 @@
 
 **关键约束**：Phase 1A Spike Gate 是 hard gate。8 项必须 PASS 才能进 Sprint 1。任何 PARTIAL/FAIL 必须 ADR。
 
-### 2.1 Sprint 0 任务清单（见 v2.1.4 §1.2.1）
+### 2.1 Sprint 0 任务清单（见 v2.1.5 §1.2.1）
 
 **v2.2 口径统一**：Sprint 0 共 **9 个任务**（S0-01 ~ S0-09）：
 
 - **S0-01** 是前置选择任务（选定 Tizen repo，不是技术 gate）
 - **S0-02 ~ S0-09** 是 **8 个核心技术 gate**
 
-**总工时**：11 天（v2.1.4 修正）
+**总工时**：11 天（v2.1.5 修正）
 
-完整任务列表见《开发计划 v2.1.4》§Sprint 0 详细规划 + 《SPRINT_0_PROMPT v1.2》§2。
+完整任务列表见《开发计划 v2.1.5》§Sprint 0 详细规划 + 《SPRINT_0_PROMPT v1.2》§2。
 
 ### 2.2 Sprint 0 工作流
 
@@ -140,7 +144,7 @@
 4. 在选定的 Tizen repo 上跑
 5. 记录数据（实际数字 / 错误日志 / 抽样结果）
 6. 评判 PASS / PARTIAL / FAIL
-7. 写 spike_report 用 v2.1.4 §0.3 / Compiler A18.2 的模板
+7. 写 spike_report 用 v2.1.5 §0.3 / Compiler A18.2 的模板
 8. 如果 PARTIAL/FAIL，产出 ADR（决策 A/B/C）
 ```
 
@@ -190,7 +194,7 @@ docs/dev_memory/phase_1a/sprint_0_spike/
 
 ```
 Day 1（Sprint 开始）：
-- 读对应 Sprint 任务清单（v2.1.4）
+- 读对应 Sprint 任务清单（v2.1.5）
 - 确认前置依赖（Base 层 / CNEI / etc.）就绪
 - **创建 sprint 主 branch（v2.2 修订：默认 sprint-N-main，与 SPRINT_1_PLUS v1.2 一致）**：`codex/sprint-N-main`
   - 仅风险隔离任务才用 `codex/sprint-N-task-X`，验证后 merge 回 sprint-N-main
@@ -235,7 +239,7 @@ Day N（Sprint 末尾）：
 
 **1 个 advisory check（不 block merge，但必须记录）**：
 
-9. doc consistency warning（v2.1.4 §0.3.1 第 9 项）
+9. doc consistency warning（v2.1.5 §0.3.1 第 9 项）
    - 发现不一致 → emit warning，不 block merge
    - 但**必须在 review_packet §6 中列出 advisory warnings**
    - user / 外部 AI review 时会看到并决策是否需要修

@@ -1,6 +1,6 @@
-# Coding System 开发计划 v2.1.4（Phase 1A/1B/1.5 Sprint 拆分）
+# Coding System 开发计划 v2.1.5（Phase 1A/1B/1.5 Sprint 拆分）
 
-**版本**：v2.1.4
+**版本**：v2.1.5
 **状态**：Implementation Plan
 **适用对象**：Codex 开发主体、用户（PM）、外部 AI Reviewer（Claude / ChatGPT / Kimi）
 **关联文档**（v2.1.2 基线，与 MAIN_PROMPT v2.2 一致）：
@@ -21,7 +21,8 @@
 - v2.1.1：ChatGPT + Kimi v0.2 review 反馈（Sprint 0 工时修正 / Sprint 2b 弹性触发 / review_packet 字段 / merge gate 第 9 项）
 - **v2.1.2**：ChatGPT + Kimi 批次 3 修订 review，consistency cleanup（头部基线版本同步 / Sprint 0 残留 S0-10 清理 / 工时 10.5→11 天 / S0-03 工时 3→3.5 / check_gate.sh 实现细节修正）
 - **v2.1.3**：Codex Sprint 0 design review 反馈 — 关联文档版本同步到 Contract v0.7.3 / Compiler RC2.3 / Benchmark RC2.4 / CNEI v0.3.4；S0-03 注明 stale 仅 mtime 基础探测（完整验证归 S0-09，解决 Issue 1 归属重叠）；S0-07 注明 5 份样例仅验证 matcher 机制、20-30 条是 Sprint 2b 前置（解决 Issue 5 时机不清）
-- **v2.1.4（本版）**：Codex S0-04 spike 沉淀（见 change_2）— S0-04 Sprint 0 标准明确化（机制验证用通用 C/C++ 真实样本，不限 LLD）；S2b-03 LogErrorParser 实现增强（taxonomy 扩到 10 类，加 primary/cascade 识别，支持 LLD 双格式）；关联文档同步 CNEI v0.3.4 → v0.3.5
+- **v2.1.4**：Codex S0-04 spike 沉淀（见 change_2）— S0-04 Sprint 0 标准明确化（机制验证用通用 C/C++ 真实样本，不限 LLD）；S2b-03 LogErrorParser 实现增强（taxonomy 扩到 10 类，加 primary/cascade 识别，支持 LLD 双格式）；关联文档同步 CNEI v0.3.4 → v0.3.5
+- **v2.1.5（本版）**：ChatGPT + Kimi 外部 review 修正（见 change_3）— Sprint 0 定性降级为"pre-repair pipeline 机制验证"；进 Sprint 1 新增强制前置 S0-A（Repair Loop + LLM 修复 A/B）+ S0-C（跨包最小）+ 可审计性修复 + 定性修正；S0-A 出负面结论则 Stop the line 重评估 CNEI 设计动机
 
 ---
 
@@ -388,11 +389,28 @@ docs/dev_memory/
 - [ ] 任何 PARTIAL/FAIL 都有明确 ADR：A（重做）/ B（降目标）/ C（推 1.5）
 - [ ] user + 至少 1 个外部 AI 通过 `spike_summary.md` review
 
+**v2.1.5 新增 — 外部 review 后的进 Sprint 1 强制前置**（见 change_3）：
+
+ChatGPT + Kimi 两轮独立外部 review（均拉真实代码核对）一致指出：S0-02~S0-09 验证的是 **pre-repair 证据管线机制**（mock/dry-run 级），**未验证**系统核心闭环（LLM 修复 / patch / worktree / bounded repair）、跨包能力、真实 patch 成功率。Sprint 0 定性应降级为"pre-repair pipeline 机制验证"，不是"Phase 1A 系统可行性验证"。
+
+进 Sprint 1（写 Compiler Agent 产品代码）前必须额外完成：
+
+- [ ] **S0-A Repair Loop Spike PASS**（修复闭环 + 真调 LLM 的修复准确率 A/B 测试，见 `S0-A_Repair_Loop_Spike.md`）—— 验证最致命的未验证假设
+- [ ] **S0-C 跨包最小验证 PASS**（见 `S0-C_Cross_Package_Spike.md`）—— 验证立项卖点"跨包联动"
+- [ ] **可审计性修复**：补 `artifact_manifest.json` + S0-01~S0-04 frozen copy（当前 checkpoint 缺前 4 gate 产物）
+- [ ] **Sprint 0 定性修正**：sprint_0_memory 降级表述 / S0-08 改注"pre-LLM pipeline dry run" / token 口径统一注明场景限定 / Gate 8 cascade 口径精确化
+
+推荐但非阻塞（可与 Sprint 1 并行）：
+- [ ] **S0-D clangd 多包样本**（模板重 / 宏密集 / 链接复杂 / 跨包的包，扩大 clangd 准确率验证样本）
+
+注：S0-A / S0-C / S0-D 是 Phase 1A 根基补验，与 S0-10 Scale Spike（Phase 1.5 的 gbs/chroot/scip-clang）不同，不冲突。
+
 **失败处理**：
 
-- **PASS**：进入 Sprint 1
-- **PARTIAL（1-2 项）**：按 ADR 处理；如选 B（降目标），更新 RC2.1 文档的 Exit Criteria
-- **FAIL（≥ 3 项）**：**Stop the line**，整体方案重评估；可能需要 RC3 或推迟 Phase 1A
+- **PASS**（含 S0-A / S0-C / 审计修复 / 定性修正全部完成）：进入 Sprint 1
+- **S0-A 的 A/B 测试出负面结论**（LLM 用 EvidencePacket 修得不如直接塞日志 / negative_facts 无用）：**Stop the line**，整个 CNEI 设计动机需重评估
+- **PARTIAL（1-2 项）**：按 ADR 处理；如选 B（降目标），更新文档 Exit Criteria
+- **FAIL（≥ 3 项）**：**Stop the line**，整体方案重评估
 
 ---
 

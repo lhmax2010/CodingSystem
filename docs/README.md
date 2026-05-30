@@ -28,7 +28,7 @@ docs/
 | `02_Compiler_Agent_v5.2-RC2.3.md` | v5.2-RC2.3 | Phase 1A 主体：编译错误修复 Agent | Sprint 0 Ready |
 | `03_Benchmark_Agent_v5.2-RC2.4.md` | v5.2-RC2.4 | Phase 1B 主体：性能基准 Agent | Sprint 0 Ready |
 | `06_Code_Navigation_Evidence_Infrastructure_v0.3.5.md` | v0.3.5 | CNEI（Live 模式，代码导航证据基础设施） | Draft / Spike Required |
-| `05_Phased_Development_Plan_v2.1.4.md` | v2.1.4 | Sprint 拆分 + DoD + dev_memory + merge gate | Implementation Plan |
+| `05_Phased_Development_Plan_v2.1.5.md` | v2.1.5 | Sprint 拆分 + DoD + dev_memory + merge gate | Implementation Plan |
 | `07_Benchmark_Skill_Framework_v0.2.1.md` | v0.2.1 | Phase 1B Skill 扩展框架 | Implementation Candidate |
 | `08_Phase_1_5_Overview_v0.3.md` | v0.3 | Phase 1.5 路线（含 OS 级扩展点预留） | Forward Roadmap |
 | `09_Demo_Acceptance_Playbook_v0.3.md` | v0.3 | M1/M2 Demo 验收剧本 | Demo Template |
@@ -37,7 +37,7 @@ docs/
 
 | 文档 | 版本 | 用途 |
 |---|---|---|
-| `MAIN_PROMPT_for_Codex_v2.4.md` | v2.4 | Codex 工作总指南（贯穿 Sprint 0 → M2） |
+| `MAIN_PROMPT_for_Codex_v2.5.md` | v2.5 | Codex 工作总指南（贯穿 Sprint 0 → M2） |
 | `SPRINT_0_PROMPT_for_Codex_v1.2.1.md` | v1.2 | Sprint 0 Spike Gate 启动专用 |
 | `SPRINT_1_PLUS_PROMPT_for_Codex_v1.3.md` | v1.3 | Sprint 1+ 常规开发流程 |
 
@@ -54,18 +54,18 @@ docs/
 
 1. `README.md`（本文件）
 2. `DEVELOPMENT_RULES.md`（R1–R14 规约，含 PR 调整）
-3. `prompts/MAIN_PROMPT_for_Codex_v2.4.md`（工作总指南，必读）
+3. `prompts/MAIN_PROMPT_for_Codex_v2.5.md`（工作总指南，必读）
 4. `prompts/SPRINT_0_PROMPT_for_Codex_v1.2.1.md`（Sprint 0 启动）
 5. `baseline/00_Agent_Team_Contract_v0.7.3.md`（协议层）
 6. `baseline/02_Compiler_Agent_v5.2-RC2.3.md`（Phase 1A 主体）
 7. `baseline/06_Code_Navigation_Evidence_Infrastructure_v0.3.5.md`（CNEI）
-8. `baseline/05_Phased_Development_Plan_v2.1.4.md`（Sprint 拆分）
+8. `baseline/05_Phased_Development_Plan_v2.1.5.md`（Sprint 拆分）
 9. `adr/ADR_001_CNEI_Scale_Direction.md`（规模化方向，了解 Phase 1A 要预留什么）
 10. `design_changes/`（已批准的设计变更，了解 baseline 演进）
 
 ### Sprint 1+ 阶段
 
-切换到 `prompts/SPRINT_1_PLUS_PROMPT_for_Codex_v1.3.md`，按 v2.1.4 的 Sprint 任务清单推进。
+切换到 `prompts/SPRINT_1_PLUS_PROMPT_for_Codex_v1.3.md`，按 v2.1.5 的 Sprint 任务清单推进。
 
 ## 重要边界（务必理解）
 
