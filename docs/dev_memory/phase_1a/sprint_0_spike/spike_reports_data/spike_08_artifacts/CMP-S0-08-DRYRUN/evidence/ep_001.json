@@ -1,0 +1,118 @@
+{
+  "ambiguous_facts": [
+    {
+      "confidence": "medium",
+      "fact": "The true source edit is a renamed typedef declaration; the first compiler diagnostic is the primary candidate for repair analysis."
+    }
+  ],
+  "cascade_summary": {
+    "evidence_packets_generated": 1,
+    "primary_error_line_no": 28,
+    "same_symbol_cascade_count_excluding_primary": 38,
+    "strategy": "v0.3.5_first_error_primary_same_symbol_summary",
+    "suppressed_per_error_packets": 40,
+    "terminal_compiler_limit_count": 2,
+    "total_compiler_error_lines": 41,
+    "unknown_type_name_lines": 39
+  },
+  "clangd_stale": false,
+  "collection_metadata": {
+    "budget_pass": true,
+    "budget_tokens": 4000,
+    "collected_at": "2026-05-29T12:06:34.224448+00:00",
+    "collection_duration_ms": 0.31,
+    "collectors_run": [
+      {
+        "mode": "s0_08_unknown_type_name_parser",
+        "name": "LogErrorParser",
+        "status": "ok"
+      },
+      {
+        "mode": "v0.3.5_spike",
+        "name": "PrimaryCascadeSummarizer",
+        "status": "ok"
+      },
+      {
+        "mode": "source_tree_read",
+        "name": "SourceHeaderProbe",
+        "status": "ok"
+      },
+      {
+        "matches": 0,
+        "name": "KnownIssueMatcher",
+        "status": "ok"
+      }
+    ],
+    "packet_char_count": 4144,
+    "token_estimator": "chars_div_4_fallback",
+    "total_tokens_estimate": 1036
+  },
+  "compile_commands_provenance": "not_required_for_log_parser_dry_run",
+  "degraded_reason": "dry_run_replay_uses_existing_s0_04_failure_log",
+  "evidence_id": "EP-CMP-S0-08-001",
+  "facts": {
+    "expected_typedef_present": false,
+    "primary_candidate_policy": "v0.3.5 first compiler error + same-symbol cascade summary",
+    "primary_position": 1,
+    "primary_related_symbol": "pkgmgrinfo_pkginfo_h",
+    "probe_confidence": "high",
+    "raw_error_line_count": 41,
+    "renamed_typedef_candidate": "pkgmgrinfo_pkginfo_h_renamed_for_s0_04",
+    "representative_cascade_messages": [
+      "/home/abuild/s0/s0_04_exp2_src/include/pkgmgr-info.h:297:55: error: unknown type name 'pkgmgrinfo_pkginfo_h'; did you mean 'pkgmgrinfo_appinfo_h'?",
+      "/home/abuild/s0/s0_04_exp2_src/include/pkgmgr-info.h:298:70: error: unknown type name 'pkgmgrinfo_pkginfo_h'; did you mean 'pkgmgrinfo_appinfo_h'?",
+      "/home/abuild/s0/s0_04_exp2_src/include/pkgmgr-info.h:318:64: error: unknown type name 'pkgmgrinfo_pkginfo_h'; did you mean 'pkgmgrinfo_appinfo_h'?"
+    ],
+    "root_header": "/home/abuild/s0/s0_04_exp2_src/include/pkgmgrinfo_type.h",
+    "source_probe": "public_header_text_search",
+    "unknown_type_name_line_count": 39
+  },
+  "known_issue_matches": [],
+  "log_excerpt": [
+    {
+      "char_count": 699,
+      "content": "In file included from /home/abuild/s0/s0_04_exp2_src/src/parser/src/pkgmgr_parser.c:29:\nIn file included from /home/abuild/s0/s0_04_exp2_src/include/pkgmgr-info.h:50:\n/home/abuild/s0/s0_04_exp2_src/include/pkgmgrinfo_type.h:278:46: error: unknown type name 'pkgmgrinfo_pkginfo_h'; did you mean 'pkgmgrinfo_appinfo_h'?\n  278 | typedef int (*pkgmgrinfo_pkg_list_cb) (const pkgmgrinfo_pkginfo_h handle,\n      |                                              ^~~~~~~~~~~~~~~~~~~~\n      |                                              pkgmgrinfo_appinfo_h\n/home/abuild/s0/s0_04_exp2_src/include/pkgmgrinfo_type.h:193:15: note: 'pkgmgrinfo_appinfo_h' declared here\n  193 | typedef void *pkgmgrinfo_appinfo_h;",
+      "line_range": [
+        26,
+        33
+      ],
+      "reason": "nested_include",
+      "redacted": true,
+      "source_file": "/tmp/coding-system-s0/s0_04_exp2_build.log"
+    }
+  ],
+  "negative_facts": [
+    {
+      "check": "public header declares typedef void *pkgmgrinfo_pkginfo_h;",
+      "confidence": "high",
+      "implication": "The public typedef used by later declarations is absent from the header in this failure case.",
+      "result": "not_found",
+      "scope": "source_code"
+    },
+    {
+      "check": "KnownIssueMatcher has active unknown_type_name sample",
+      "confidence": "high",
+      "implication": "S0-07 sample DB did not include this new P0 taxonomy item; no hint is attached.",
+      "result": "not_found",
+      "scope": "known_issues"
+    }
+  ],
+  "schema": "evidence_packet.v1.spike",
+  "semantic_unavailable": false,
+  "task_id": "CMP-S0-08-DRYRUN",
+  "trigger": {
+    "build_system": "cmake_make_replay",
+    "build_target": "pkgmgr-info",
+    "error_signature": "/home/abuild/s0/s0_04_exp2_src/include/pkgmgrinfo_type.h:278:46: error: unknown type name 'pkgmgrinfo_pkginfo_h'; did you mean 'pkgmgrinfo_appinfo_h'?",
+    "error_type": "unknown_type_name",
+    "is_primary": true,
+    "primary_id": "ERR-S0-08-001",
+    "related_symbol": "pkgmgrinfo_pkginfo_h",
+    "source_location": {
+      "column": 46,
+      "file": "/home/abuild/s0/s0_04_exp2_src/include/pkgmgrinfo_type.h",
+      "line": 278
+    },
+    "type": "compile_error"
+  }
+}

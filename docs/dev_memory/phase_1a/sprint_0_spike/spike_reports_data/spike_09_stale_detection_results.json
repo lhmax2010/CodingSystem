@@ -1,0 +1,192 @@
+{
+  "benchmark_path_note": {
+    "backend": "DegradedBackend",
+    "clangd_stale": false,
+    "provenance": "auto_degraded",
+    "reason": "build_system_unknown_not_cmake_ninja",
+    "scope": "documented only; S0-09 validates Compiler Agent path"
+  },
+  "comparison": {
+    "all_clangd_medium_when_stale": true,
+    "all_non_clangd_unchanged": true,
+    "clangd_only_downgraded": true,
+    "comparisons": [
+      {
+        "changed": true,
+        "fact_id": "F-CLANGD-DEF",
+        "fresh_confidence": "high",
+        "fresh_modifier": null,
+        "source": "clangd",
+        "stale_confidence": "medium",
+        "stale_modifier": "stale_compile_commands"
+      },
+      {
+        "changed": true,
+        "fact_id": "F-CLANGD-REF",
+        "fresh_confidence": "high",
+        "fresh_modifier": null,
+        "source": "clangd",
+        "stale_confidence": "medium",
+        "stale_modifier": "stale_compile_commands"
+      },
+      {
+        "changed": false,
+        "fact_id": "F-TREESITTER-CONTEXT",
+        "fresh_confidence": "medium",
+        "fresh_modifier": null,
+        "source": "tree-sitter",
+        "stale_confidence": "medium",
+        "stale_modifier": null
+      },
+      {
+        "changed": false,
+        "fact_id": "F-CTAGS-CANDIDATE",
+        "fresh_confidence": "medium",
+        "fresh_modifier": null,
+        "source": "ctags",
+        "stale_confidence": "medium",
+        "stale_modifier": null
+      },
+      {
+        "changed": false,
+        "fact_id": "F-RIPGREP-TEXT",
+        "fresh_confidence": "low",
+        "fresh_modifier": null,
+        "source": "ripgrep",
+        "stale_confidence": "low",
+        "stale_modifier": null
+      }
+    ]
+  },
+  "decision_pending_user_review": true,
+  "mtime_checks": {
+    "fresh": {
+      "backend": "ClangdBackend",
+      "compile_commands_mtime": 1780057546.4456782,
+      "compile_commands_path": "/tmp/coding-system-s0/s0_09/fresh/build/compile_commands.json",
+      "modified_file": null,
+      "newest_cmake_mtime": 1780053946.4456782,
+      "newest_cmake_path": "/tmp/coding-system-s0/s0_09/fresh/pkgmgr-info/CMakeLists.txt",
+      "stale_reason": null
+    },
+    "stale": {
+      "backend": "ClangdBackend",
+      "compile_commands_mtime": 1780057546.4688497,
+      "compile_commands_path": "/tmp/coding-system-s0/s0_09/stale/build/compile_commands.json",
+      "modified_file": "/tmp/coding-system-s0/s0_09/stale/pkgmgr-info/CMakeLists.txt",
+      "newest_cmake_mtime": 1780057556.4688497,
+      "newest_cmake_path": "/tmp/coding-system-s0/s0_09/stale/pkgmgr-info/CMakeLists.txt",
+      "stale_reason": "compile_commands.json older than newest CMakeLists.txt"
+    }
+  },
+  "scenarios": {
+    "fresh": {
+      "clangd_fact_confidences": [
+        "high",
+        "high"
+      ],
+      "clangd_fact_modifiers": [
+        null,
+        null
+      ],
+      "clangd_stale": false,
+      "compile_commands_provenance": "auto_cmake_ninja",
+      "evidence_id": "EP-S0-09-FRESH",
+      "non_clangd_fact_confidences": {
+        "ctags": "medium",
+        "ripgrep": "low",
+        "tree-sitter": "medium"
+      },
+      "rows": [
+        {
+          "confidence": "high",
+          "confidence_modifier": null,
+          "fact_id": "F-CLANGD-DEF",
+          "source": "clangd"
+        },
+        {
+          "confidence": "high",
+          "confidence_modifier": null,
+          "fact_id": "F-CLANGD-REF",
+          "source": "clangd"
+        },
+        {
+          "confidence": "medium",
+          "confidence_modifier": null,
+          "fact_id": "F-TREESITTER-CONTEXT",
+          "source": "tree-sitter"
+        },
+        {
+          "confidence": "medium",
+          "confidence_modifier": null,
+          "fact_id": "F-CTAGS-CANDIDATE",
+          "source": "ctags"
+        },
+        {
+          "confidence": "low",
+          "confidence_modifier": null,
+          "fact_id": "F-RIPGREP-TEXT",
+          "source": "ripgrep"
+        }
+      ]
+    },
+    "stale": {
+      "clangd_fact_confidences": [
+        "medium",
+        "medium"
+      ],
+      "clangd_fact_modifiers": [
+        "stale_compile_commands",
+        "stale_compile_commands"
+      ],
+      "clangd_stale": true,
+      "compile_commands_provenance": "auto_cmake_ninja",
+      "evidence_id": "EP-S0-09-STALE",
+      "non_clangd_fact_confidences": {
+        "ctags": "medium",
+        "ripgrep": "low",
+        "tree-sitter": "medium"
+      },
+      "rows": [
+        {
+          "confidence": "medium",
+          "confidence_modifier": "stale_compile_commands",
+          "fact_id": "F-CLANGD-DEF",
+          "source": "clangd"
+        },
+        {
+          "confidence": "medium",
+          "confidence_modifier": "stale_compile_commands",
+          "fact_id": "F-CLANGD-REF",
+          "source": "clangd"
+        },
+        {
+          "confidence": "medium",
+          "confidence_modifier": null,
+          "fact_id": "F-TREESITTER-CONTEXT",
+          "source": "tree-sitter"
+        },
+        {
+          "confidence": "medium",
+          "confidence_modifier": null,
+          "fact_id": "F-CTAGS-CANDIDATE",
+          "source": "ctags"
+        },
+        {
+          "confidence": "low",
+          "confidence_modifier": null,
+          "fact_id": "F-RIPGREP-TEXT",
+          "source": "ripgrep"
+        }
+      ]
+    }
+  },
+  "scope": {
+    "agent_path": "Compiler Agent only",
+    "benchmark_path": "not under test; build_system=None degrades before clangd",
+    "compile_commands_source": "/tmp/coding-system-s0/gbs-root-pkgmgr/local/BUILD-ROOTS/scratch.x86_64.0/home/abuild/s0/build-s0-02/compile_commands.json",
+    "source_repo": "/tmp/coding-system-s0/repos/pkgmgr-info",
+    "task": "S0-09",
+    "work_root": "/tmp/coding-system-s0/s0_09"
+  }
+}

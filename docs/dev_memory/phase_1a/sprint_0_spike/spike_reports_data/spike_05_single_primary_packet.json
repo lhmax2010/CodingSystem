@@ -1,0 +1,131 @@
+{
+  "ambiguous_facts": [],
+  "cascade_summary": null,
+  "clangd_stale": false,
+  "collection_metadata": {
+    "budget_pass": true,
+    "budget_tokens": 4000,
+    "collected_at": "2026-05-29T11:32:28.484787+00:00",
+    "collection_duration_ms": 1.294,
+    "collectors_run": [
+      {
+        "mode": "s0_04_parsed_input",
+        "name": "LogErrorParser",
+        "status": "ok"
+      },
+      {
+        "mode": "build_log_command_line",
+        "name": "CompileCommandCollector",
+        "status": "ok"
+      },
+      {
+        "mode": "source_tree_scan",
+        "name": "HeaderIncludeCollector",
+        "status": "ok"
+      },
+      {
+        "name": "CMakeContextCollector",
+        "reason": "spike_regex_only",
+        "status": "degraded"
+      },
+      {
+        "name": "KnownIssueMatcher",
+        "reason": "S0-07 owns full matcher validation",
+        "status": "mocked"
+      }
+    ],
+    "packet_char_count": 4226,
+    "token_estimator": "chars_div_4_fallback",
+    "total_tokens_estimate": 1057
+  },
+  "compile_commands_provenance": "build_log_command_line",
+  "degraded_reason": null,
+  "evidence_id": "EP-S0-05-SINGLE-001",
+  "facts": {
+    "candidate_header_dirs": [
+      "/home/abuild/s0/s0_04_exp1_1_src/src/parser/include"
+    ],
+    "compile_command_include_path_count": 41,
+    "compile_command_include_paths_sample": [
+      "/home/abuild/s0/s0_04_exp1_1_src/include",
+      "/home/abuild/s0/s0_04_exp1_1_src/src",
+      "/home/abuild/s0/s0_04_exp1_1_src/src/common",
+      "/home/abuild/s0/s0_04_exp1_1_src/src/common/socket",
+      "/home/abuild/s0/s0_04_exp1_1_src/src/common/parcel",
+      "/home/abuild/s0/s0_04_exp1_1_src/src/common/shared_memory",
+      "/home/abuild/s0/s0_04_exp1_1_src/src/common/filter_checker",
+      "/home/abuild/s0/s0_04_exp1_1_src/src/server",
+      "/home/abuild/s0/s0_04_exp1_1_src/src/server/cynara_checker",
+      "/home/abuild/s0/s0_04_exp1_1_src/src/server/database",
+      "/home/abuild/s0/s0_04_exp1_1_src/src/server/request_handler",
+      "/home/abuild/s0/s0_04_exp1_1_src/src/server/shared_memory"
+    ],
+    "header_candidate_count": 1,
+    "header_candidates": [
+      "/home/abuild/s0/s0_04_exp1_1_src/src/parser/include/pkgmgr_parser.h"
+    ],
+    "include_line": "#include \"pkgmgr_parser.h\""
+  },
+  "known_issue_matches": [
+    {
+      "anti_patterns": [
+        "Header may be generated and absent until a previous build step runs",
+        "Header may be intentionally removed in a newer upstream version"
+      ],
+      "confidence": 0.82,
+      "description": "Header exists in source tree but its directory is absent from the compile command include path.",
+      "issue_id": "tizen_missing_include_directory",
+      "suggested_fix_hint": "Restore the missing include directory in CMake include directories for this target."
+    }
+  ],
+  "log_excerpt": [
+    {
+      "char_count": 558,
+      "content": "x86_64-tizen-linux-gnu-clang++: warning: -Wl,-zdefs: 'linker' input unused [-Wunused-command-line-argument]\nx86_64-tizen-linux-gnu-clang++: warning: -Wl,-z,relro: 'linker' input unused [-Wunused-command-line-argument]\n/home/abuild/s0/s0_04_exp1_1_src/src/common/pkgmgrinfo_appinfo.cc:35:10: fatal error: 'pkgmgr_parser.h' file not found\n   35 | #include \"pkgmgr_parser.h\"\n      |          ^~~~~~~~~~~~~~~~~\n1 error generated.\ngmake[2]: *** [src/CMakeFiles/pkgmgr-info.dir/build.make:166: src/CMakeFiles/pkgmgr-info.dir/common/pkgmgrinfo_appinfo.cc.o] Error 1",
+      "line_range": [
+        75,
+        81
+      ],
+      "reason": "compile_error_context",
+      "redacted": true,
+      "source": "/tmp/coding-system-s0/s0_04_exp1_1_build.log"
+    }
+  ],
+  "negative_facts": [
+    {
+      "check": "compile command include path contains header candidate directory",
+      "confidence": "high",
+      "details": [
+        "/home/abuild/s0/s0_04_exp1_1_src/src/parser/include"
+      ],
+      "implication": "The source tree contains the header, but the failing translation unit cannot search that directory.",
+      "result": "not_found",
+      "scope": "build_config"
+    },
+    {
+      "check": "raw log included in packet",
+      "confidence": "high",
+      "implication": "Only a bounded log_excerpt is included.",
+      "result": "not_present",
+      "scope": "prompt_boundary"
+    }
+  ],
+  "schema": "evidence_packet.v1.spike",
+  "semantic_unavailable": false,
+  "task_id": "S0-05",
+  "trigger": {
+    "build_system": "cmake_make",
+    "build_target": "pkgmgr-info",
+    "error_signature": "/home/abuild/s0/s0_04_exp1_1_src/src/common/pkgmgrinfo_appinfo.cc:35:10: fatal error: 'pkgmgr_parser.h' file not found",
+    "error_type": "cannot_find_header",
+    "is_primary": true,
+    "primary_id": "ERR-S0-05-001",
+    "related_symbol": "pkgmgr_parser.h",
+    "source_location": {
+      "column": 10,
+      "file": "/home/abuild/s0/s0_04_exp1_1_src/src/common/pkgmgrinfo_appinfo.cc",
+      "line": 35
+    },
+    "type": "compile_error"
+  }
+}
