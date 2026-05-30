@@ -12,7 +12,7 @@
 # 当前激活的 provider
 # 可选值:kimi / claude / openai / cline / custom
 # -----------------------------------------------------------------------------
-active_provider: kimi_code
+active_provider: kimi
 
 # -----------------------------------------------------------------------------
 # 各 provider 配置（只有 active_provider 指向的会被使用）
