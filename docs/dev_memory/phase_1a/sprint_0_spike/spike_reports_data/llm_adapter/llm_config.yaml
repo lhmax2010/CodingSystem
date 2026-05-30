@@ -1,0 +1,141 @@
+# =============================================================================
+# LLM Adapter Configuration — Coding System Phase 1A Sprint 0 S0-A Spike
+# =============================================================================
+# 此文件控制 S0-A LLM 调用使用哪个 provider。
+#
+# 开发期默认用 Kimi（PM 提供 API key）。
+# 后续公司部署到生产环境时，由公司 AI 修改 active_provider 为 cline，
+# 并补充 ClineAdapter 实现（见 llm_adapter/README.md 步骤 3）。
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 当前激活的 provider
+# 可选值:kimi / claude / openai / cline / custom
+# -----------------------------------------------------------------------------
+active_provider: kimi
+
+# -----------------------------------------------------------------------------
+# 各 provider 配置（只有 active_provider 指向的会被使用）
+# -----------------------------------------------------------------------------
+providers:
+
+  # ---------- Kimi (Moonshot AI) — 开发期默认 ----------
+  kimi:
+    api_base: https://api.moonshot.ai/v1/chat/completions
+    # 如在国内访问 .ai 不稳，改为 https://api.moonshot.cn/v1/chat/completions
+    model: kimi-k2.6
+    # 256k context、agentic coding 强、OpenAI 兼容协议
+    # 旧的 moonshot-v1-32k 已 deprecated，统一用 kimi-k2.6
+    api_key_env: MOONSHOT_API_KEY
+    max_tokens: 4096
+    temperature: 0.0           # spike 要可复现，固定 0
+    timeout_sec: 60
+    extra_headers: {}
+
+  # ---------- Anthropic Claude ----------
+  claude:
+    api_base: https://api.anthropic.com/v1/messages
+    model: claude-sonnet-4-6   # 或 claude-opus-4-7 (更强但更贵)
+    api_key_env: ANTHROPIC_API_KEY
+    max_tokens: 4096
+    temperature: 0.0
+    timeout_sec: 60
+    extra_headers:
+      anthropic-version: "2023-06-01"
+
+  # ---------- OpenAI ----------
+  openai:
+    api_base: https://api.openai.com/v1/chat/completions
+    model: gpt-4o
+    api_key_env: OPENAI_API_KEY
+    max_tokens: 4096
+    temperature: 0.0
+    timeout_sec: 60
+    extra_headers: {}
+
+  # ---------- 公司内部 LLM (Cline) — 部署期由公司 AI 补充 ----------
+  cline:
+    # 公司部署时:在此填写公司 LLM 接入信息
+    # 如果公司 LLM 协议是 OpenAI/Anthropic 兼容,可直接改 active_provider
+    # 为 openai/claude/custom 并改 endpoint,不必新写 adapter
+    # 如果协议私有,实现 ClineAdapter.call() (见 llm_adapter.py)
+    api_base: <COMPANY_LLM_ENDPOINT>          # 必填:公司 LLM endpoint URL
+    model: <COMPANY_MODEL_NAME>               # 必填:公司模型 ID
+    api_key_env: <COMPANY_API_KEY_ENV>        # 必填:API key 的环境变量名
+    auth_method: api_key                       # api_key / oauth / mtls / custom
+    max_tokens: 4096
+    temperature: 0.0
+    timeout_sec: 60
+    extra_headers: {}                         # 公司特定 header(如有)
+
+  # ---------- Custom — OpenAI 兼容接口的通用兜底 ----------
+  # 任何兼容 OpenAI /v1/chat/completions 协议的服务,改 base+model+key 即可
+  custom:
+    api_base: <CUSTOM_ENDPOINT>
+    model: <CUSTOM_MODEL>
+    api_key_env: <CUSTOM_API_KEY_ENV>
+    max_tokens: 4096
+    temperature: 0.0
+    timeout_sec: 60
+    extra_headers: {}
+
+# -----------------------------------------------------------------------------
+# 通用配置（所有 provider 共享）
+# -----------------------------------------------------------------------------
+common:
+  retry_max: 2                  # 调用失败重试次数
+  retry_backoff_sec: 5          # 重试间隔（秒）
+  log_prompts: true             # spike 阶段开:记录完整 prompt 用于审计
+  log_dir: /tmp/coding-system-s0/llm_traces   # log 目录(不进 repo)
+  redact_keys: true             # log 里永不出现 API key 明文
+  request_id_prefix: "s0a"      # 每次调用生成的 request_id 前缀
+
+# -----------------------------------------------------------------------------
+# S0-A A/B 测试场景定义
+# -----------------------------------------------------------------------------
+ab_test:
+  scenarios:
+    # === A/B 测试 1:negative_facts 价值 ===
+    - id: A_with_negative_facts
+      description: 完整 EvidencePacket(含 negative_facts) — 验 negative_facts 价值
+    - id: B_without_negative_facts
+      description: EvidencePacket 去掉 negative_facts(其余相同)
+
+    # === A/B 测试 2:EvidencePacket vs 直接塞日志 ===
+    - id: C_evidence_packet
+      description: 完整 EvidencePacket(=A,这里复用以便清晰对比 D)
+    - id: D_raw_log_truncated
+      description: 直接塞原始 build log,截断到与 EvidencePacket 相近 token 量
+                   模拟"单技能 Skill Workflow"做法
+
+  # S0-A 测试的真实错误(来自 S0-04 spike 触发的真实场景)
+  errors:
+    - id: E1
+      type: cannot_find_header
+      description: pkgmgr-info 漏配 include path 场景
+      source: spike_04 实验 1.1
+    - id: E2
+      type: undefined_reference
+      description: pkgmgr-info 漏 target_link_libraries 场景
+      source: spike_04 实验 1.2
+    - id: E3
+      type: unknown_type_name (cascade)
+      description: 删 typedef → 41 个 cascade 错误的级联场景
+      source: spike_04 实验 2
+
+  # raw log baseline (变体 D) 截断配置
+  raw_log_baseline:
+    # 变体 D 直接塞日志:控制塞多少
+    # 取与 EvidencePacket 相近的 token 量级,体现"相同 token 预算下谁修得更准"
+    target_token_count: 1500          # 与典型 EvidencePacket 1057 同量级
+    truncation_strategy: tail          # head / tail / smart_around_error
+    # 触发 trace 加强警告(scenario_id 含 raw_log 时,trace 会加 RAW_LOG_BASELINE_WARNING)
+    scenario_id: D_raw_log_truncated
+
+  # 验收指标
+  metrics:
+    - patch_compiles                # patch apply 后能否编译通过
+    - patch_semantically_correct    # 人工 review 判断 patch 是否真正修对(不只是编译过)
+    - prompt_token_count            # prompt 消耗的 token
+    - completion_token_count        # LLM 返回的 token
+    - duration_ms                   # 调用耗时

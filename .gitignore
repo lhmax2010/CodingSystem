@@ -1,3 +1,6 @@
 .bak/
 .git/
 codes/
+/tmp/
+/tmp/coding-system-s0/
+.env

@@ -1,4 +1,4 @@
-# S0-A:Repair Loop Spike（修复闭环 + LLM 修复准确率）
+# S0-A:Repair Loop Spike（修复闭环 + LLM 修复准确率,v1.1）
 
 **类型**:Sprint 0 补充 spike（进 Sprint 1 前必须 PASS）
 **前置**:Sprint 0 S0-01~S0-09 已完成
@@ -108,9 +108,82 @@ Sprint 0 验证了"失败 → 解析 → 收集证据 → 组装 EvidencePacket"
 
 ---
 
+## LLM 调用方案（v1.1 新增）
+
+S0-A 通过 **LLM Adapter** 抽象层调用 LLM。这层抽象的好处：
+- 开发期可灵活切换 provider 对比
+- 公司部署期由公司 AI 接入公司 LLM，主代码不动
+
+### Adapter 包位置
+
+```
+docs/dev_memory/phase_1a/sprint_0_spike/spike_reports_data/llm_adapter/
+├── llm_config.yaml              # provider 配置（active = kimi）
+├── llm_adapter.py               # 抽象基类 + 5 个实现
+├── README.md                    # 公司部署接入指南
+└── llm_adapter_smoke_test.py    # 接入验证
+```
+
+支持 5 个 provider:
+- `kimi`（Moonshot）— 开发期默认
+- `claude`（Anthropic）
+- `openai`
+- `cline`（公司内部 LLM 接入位，部署期由公司 AI 实现）
+- `custom`（OpenAI 兼容协议的通用兜底）
+
+### 开发期默认:Kimi
+
+- API endpoint: `https://api.moonshot.ai/v1/chat/completions`
+- 模型: `kimi-k2.6`（256k context，agentic coding 强，OpenAI 兼容协议）
+- 环境变量: `MOONSHOT_API_KEY`（PM 提供 key，永不写死）
+- temperature=0.0（spike 要可复现）
+
+### token_usage 字段语义（重要,避免外层调用混乱）
+
+Adapter 返回的 `LLMResponse.token_usage` 使用**单次 LLM 调用**语义,字段:
+
+```python
+{'in': int, 'out': int, 'total': int}
+```
+
+**这与 Contract v0.7.3 §5（task 级 budget tracking）的字段不同**。Contract 用 `total_in / total_out / by_stage`,表达整个 Compiler Agent task 跨多次 LLM 调用 + 跨 stage 的累计 budget。
+
+两层映射关系（外层 Compiler Agent 实现时遵守）:
+
+```python
+# adapter 单次调用 → Compiler Agent task budget 聚合
+contract_budget['total_in']  += response.token_usage['in']
+contract_budget['total_out'] += response.token_usage['out']
+contract_budget['by_stage'][current_stage]['in']  += response.token_usage['in']
+contract_budget['by_stage'][current_stage]['out'] += response.token_usage['out']
+```
+
+**理由（设计决策）**:
+- adapter 不该越界做 task 级聚合，那是 Compiler Agent 的职责
+- adapter 字段贴近 LLM API 行业标准（OpenAI/Anthropic/Kimi 原生字段都是单次 in/out 语义）
+- Contract 的 `by_stage` 字段在单次调用层是死字段,强行对齐会导致语义错配
+
+### S0-A 启动前第 0 步:Codex 必须先 review adapter
+
+PM 已设计好 adapter 包,但作为外部 review 的补救措施,Codex 拿到代码后**必须先 review,再合并到 repo,然后才用**:
+
+1. **接口设计**: LLMAdapter 抽象、LLMResponse 数据契约（含 token_usage 字段语义）是否合理
+2. **配置安全**: API key 来源、redact 逻辑、log_dir 权限是否安全
+3. **协议解析正确性**: 5 个 adapter 各自的 protocol 解析是否正确（Kimi/OpenAI 兼容 vs Claude /v1/messages）
+4. **错误处理 / retry**: 4xx 不重试、429/5xx 重试 + jitter，timeout 处理
+5. **redact 覆盖度**: 不只是 `sk-...`,要覆盖 JWT/api_key=.../bearer/长 hex
+6. **trace 与 Raw Log 硬约束（Contract v0.7.3 §5.6）的关系**:
+   - trace 含完整 prompt（含 A/B 测试变体 D 的 raw log baseline）
+   - PM 设计为 local-only 审计文件,不进 repo,目录 `0700` 权限
+   - Codex 判断:spike 阶段是否需要额外约束（如 RawDataDetector preflight）
+7. **公司部署接入路径清晰度**: README 三种情况(OpenAI 兼容 / Anthropic 兼容 / 私有协议)是否清楚
+8. **环境复现完整性**: environment_setup 路径、branch、依赖是否完整
+
+输出 `[OK]` / `[DESIGN_SUGGESTION]` / `[DESIGN_ISSUE]` 报告,等 PM 决策。**有任何 BLOCKER/MAJOR 暂停等 PM 决策,不要进入 Part 1**。
+
 ## 重要约束
 
-- **真调 LLM**：用 PM 提供的模型环境（Claude / Codex / GPT-4，PM 指定）。这次不允许 mock LLM。
+- **真调 LLM**：通过 LLM Adapter 调 Kimi（开发期默认）,不再 mock。
 - **不污染主代码**：所有操作在 git worktree，主仓库全程 `git status` clean。
 - **raw log 只放 /tmp**：A/B 测试 2 的"直接塞日志"变体 D，日志内容只在运行时构造，不提交 repo；报告里只记 token 数和结论。
 - **patch 内容可入库**（作为产物），但要 bounded（符合 max_patch_lines）。
