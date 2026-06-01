@@ -1,6 +1,6 @@
-# Compiler Agent 设计文档 v5.2-RC2.3（Phase 1A 实施候选版，Sprint 0 Spike Gate 启动版）
+# Compiler Agent 设计文档 v5.2-RC2.4（Phase 1A 实施候选版，Sprint 0 Spike Gate 启动版）
 
-**版本**：v5.2-RC2.3
+**版本**：v5.2-RC2.4
 **状态**：**Implementation Candidate / Sprint 0 Ready**（仍非 Locked。Phase 1A Sprint 0 Spike 完成后才升级 Locked）
 **关联文档**：
 - 《Agent Team Contract v0.7.3》（文档 0，Locked）
@@ -22,9 +22,9 @@
 
 **v5.2-RC2.2 修订量**：< 300 字，纯实施细节修订。
 
-- **v5.2-RC2.3（本版）**：Codex Sprint 0 design review 反馈，补 budget schema 缺失的 `verify_timeout_sec`（默认 300 秒），此前被 A8.3 代码骨架引用但未定义（Issue 3）
+- **v5.2-RC2.4（本版）**：Codex Sprint 0 design review 反馈，补 budget schema 缺失的 `verify_timeout_sec`（默认 300 秒），此前被 A8.3 代码骨架引用但未定义（Issue 3）
 
-**v5.2-RC2.3 修订量**：< 200 字，补一个 budget 默认值。
+**v5.2-RC2.4 修订量**：< 200 字，补一个 budget 默认值。
 
 ---
 
@@ -783,7 +783,7 @@ diff --git a/...
       "compile_timeout_sec": 900,
       "cline_timeout_sec": 120,
       "verify_timeout_sec": 300,
-      "max_patch_lines": 200,
+      "max_patch_lines": 200,            // +/- 变更行数总和,不含 diff header / hunk header / context
       "max_tokens_per_call": 8000,
       "max_tokens_per_task": 50000,
       "evidence_packet_max_tokens": 4000
@@ -800,7 +800,7 @@ diff --git a/...
 - `constraints.budget.max_tokens_per_task`：单 task 总 token 上限
 - `constraints.budget.evidence_packet_max_tokens`：单个 EvidencePacket 上限
 
-**v5.2-RC2.3 新增字段**（解决 Codex Sprint 0 design review Issue 3）：
+**v5.2-RC2.4 新增字段**（解决 Codex Sprint 0 design review Issue 3）：
 - `constraints.budget.verify_timeout_sec`：**默认 300 秒**（5 分钟）。rebuild verification 的超时。被 A8.3 代码骨架 `budget["verify_timeout_sec"]` 引用，此前 schema 未定义默认值。
   - 理由：isolated workspace 是增量 rebuild，通常比首次 build 快，300 秒足够；超时则判定 verify 失败，走 bounded repair 的 fail-safe（rebuild 失败不重试，直接 emit_failure）。
 
@@ -1228,7 +1228,7 @@ DEFAULT_BUDGET_PROFILE = {
     "benchmark_timeout_sec": 1200,
     "cline_timeout_sec": 120,
     "max_log_bytes": 20971520,
-    "max_patch_lines": 200,
+    "max_patch_lines": 200,        # +/- 变更行数总和,不含 diff header/hunk header/context
     "max_artifact_disk_mb": 1024,
     # v5.2 新增
     "max_tokens_per_call": 8000,

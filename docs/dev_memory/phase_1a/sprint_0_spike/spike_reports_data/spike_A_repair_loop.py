@@ -16,9 +16,12 @@ Important boundary:
 from __future__ import annotations
 
 import argparse
+import atexit
 import importlib.util
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -38,16 +41,30 @@ WORKTREE_ROOT = S0A_TMP_ROOT / "worktrees"
 TRACE_ROOT = S0A_TMP_ROOT / "traces"
 PATCH_ROOT = S0A_TMP_ROOT / "patches"
 
-GBS_CONF = Path("/home/linhao/Toolchain/gbs_llvm.conf")
+GBS_CONF = Path("/home/linhao/Toolchain/gbs_llvm_coding.conf")
+GBS_ROOT = Path("/home/linhao/GBS-ROOT-TIZEN-LLVM/local/BUILD-ROOTS/scratch.x86_64.0")
+CHROOT_BUILD_PREFIX = "/home/abuild/rpmbuild/BUILD/pkgmgr-info-0.37.0"
+CHROOT_BUILD_HOST = GBS_ROOT / "home/abuild/rpmbuild/BUILD/pkgmgr-info-0.37.0"
+CLANGD_WORKSPACE_DIR = TMP_ROOT / "clangd_workspace" / "pkgmgr-info"
+COMPILE_COMMANDS_RAW = CLANGD_WORKSPACE_DIR / "compile_commands.json.chroot_raw"
+COMPILE_COMMANDS_HOST = CLANGD_WORKSPACE_DIR / "compile_commands.json"
 GBS_ARCH = "x86_64"
 MAX_PATCH_ATTEMPTS = 2
 VERIFY_TIMEOUT_SEC = 300
-MAX_PATCH_LINES = 200
+MAX_PATCH_LINES = 200  # +/- 变更行数总和(Compiler Agent v5.2-RC2.4 §5.2)
+MAX_CHROOT_CONFIGURE_SEC = 60
+MAX_CLANGD_INITIALIZE_SEC = 30
+MAX_CLANGD_QUERY_SEC = 10
+MAX_CLANGD_SELF_TEST_SEC = 30
+CLANGD_INDEX_DRAIN_SEC = 8
+DEFAULT_CLANGD = Path("/usr/bin/clangd")
+_CLANGD_CACHE: dict[str, Any] = {}
 
 SPIKE_03_PATH = SPIKE_REPORTS_DATA / "spike_03_clangd_lsp_eval.py"
 SPIKE_04_PATH = SPIKE_REPORTS_DATA / "spike_04_log_parser.py"
 SPIKE_05_PATH = SPIKE_REPORTS_DATA / "spike_05_evidence_packet.py"
 SPIKE_06_PATH = SPIKE_REPORTS_DATA / "spike_06_raw_data_detector.py"
+REWRITE_COMPILE_COMMANDS_PATH = SPIKE_REPORTS_DATA / "rewrite_compile_commands.py"
 LLM_ADAPTER_PATH = SPIKE_REPORTS_DATA / "llm_adapter" / "llm_adapter.py"
 LLM_CONFIG_PATH = SPIKE_REPORTS_DATA / "llm_adapter" / "llm_config.yaml"
 
@@ -239,6 +256,7 @@ def load_reused_spikes() -> dict[str, ModuleType]:
         "spike_04": load_spike_module("s0a_spike_04_log_parser", SPIKE_04_PATH),
         "spike_05": load_spike_module("s0a_spike_05_evidence", SPIKE_05_PATH),
         "spike_06": load_spike_module("s0a_spike_06_raw_detector", SPIKE_06_PATH),
+        "rewrite_compile_commands": load_spike_module("s0a_rewrite_compile_commands", REWRITE_COMPILE_COMMANDS_PATH),
         "llm_adapter": load_spike_module("s0a_llm_adapter", LLM_ADAPTER_PATH),
     }
     required: dict[str, list[str]] = {
@@ -246,6 +264,7 @@ def load_reused_spikes() -> dict[str, ModuleType]:
         "spike_04": ["parse_log"],
         "spike_05": ["bounded_excerpt", "estimate_tokens", "make_packet"],
         "spike_06": ["RawDataDetector"],
+        "rewrite_compile_commands": ["rewrite_commands"],
         "llm_adapter": ["get_adapter", "LLMAdapterError"],
     }
     for key, names in required.items():
@@ -385,27 +404,659 @@ def parse_build_log(log_path: Path, modules: dict[str, ModuleType]) -> ParsedBui
     )
 
 
+SOURCE_SUFFIXES = {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp"}
+
+
+def find_clangd_binary() -> Path | None:
+    """Find clangd on host or in the GBS LLVM build root."""
+
+    configured = os.environ.get("CLANGD")
+    candidates = [
+        Path(configured) if configured else None,
+        Path(shutil.which("clangd")) if shutil.which("clangd") else None,
+        DEFAULT_CLANGD,
+    ]
+    for candidate in candidates:
+        if candidate and candidate.exists() and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
+def iter_source_files(source_roots: list[Path]) -> list[Path]:
+    """Return C/C++ source files under source_roots, excluding git/build noise."""
+
+    files: list[Path] = []
+    skip_parts = {".git", "build", "cmake-build-debug", "cmake-build-release"}
+    for root in source_roots:
+        if not root.exists():
+            continue
+        for path in root.rglob("*"):
+            if not path.is_file() or path.suffix not in SOURCE_SUFFIXES:
+                continue
+            if skip_parts.intersection(path.parts):
+                continue
+            files.append(path.resolve())
+    source_suffixes = {".c", ".cc", ".cpp", ".cxx"}
+    return sorted(set(files), key=lambda path: (0 if path.suffix in source_suffixes else 1, str(path)))
+
+
+def find_symbol_occurrences(source_roots: list[Path], symbol: str, *, limit: int = 80) -> list[dict[str, Any]]:
+    """Find query positions for a symbol without replacing clangd semantics."""
+
+    occurrences: list[dict[str, Any]] = []
+    pattern = re.compile(r"\b" + re.escape(symbol) + r"\b")
+    for path in iter_source_files(source_roots):
+        try:
+            lines = path.read_text(errors="replace").splitlines()
+        except OSError:
+            continue
+        for line_index, line in enumerate(lines):
+            match = pattern.search(line)
+            if not match:
+                continue
+            is_definition = line.strip().startswith("typedef") or re.search(
+                rf"\b(?:struct|enum|class)\b.*\b{re.escape(symbol)}\b",
+                line,
+            ) is not None
+            occurrences.append(
+                {
+                    "path": path,
+                    "line": line_index,
+                    "character": match.start(),
+                    "line1": line_index + 1,
+                    "character1": match.start() + 1,
+                    "snippet": line.strip(),
+                    "is_definition_candidate": is_definition,
+                }
+            )
+            if len(occurrences) >= limit:
+                return occurrences
+    return occurrences
+
+
+def include_dirs_for_roots(source_roots: list[Path]) -> list[Path]:
+    """Build common include directories for generated clangd compile commands."""
+
+    suffixes = [
+        "include",
+        "src",
+        "src/common",
+        "src/common/socket",
+        "src/common/parcel",
+        "src/common/shared_memory",
+        "src/common/filter_checker",
+        "src/parser/include",
+        "src/server",
+        "src/server/cynara_checker",
+        "src/server/database",
+        "src/server/request_handler",
+        "tests",
+        "test",
+    ]
+    dirs: list[Path] = []
+    for root in source_roots:
+        dirs.append(root)
+        for suffix in suffixes:
+            candidate = root / suffix
+            if candidate.exists():
+                dirs.append(candidate)
+    return sorted(set(path.resolve() for path in dirs if path.exists()))
+
+
+def generated_compile_commands_dir(
+    workspace_root: Path,
+    source_roots: list[Path],
+    symbol: str,
+) -> Path:
+    """Create a minimal compile_commands.json for clangd self/spike queries."""
+
+    out_dir = S0A_TMP_ROOT / "clangd_compile_commands" / re.sub(r"[^A-Za-z0-9_.-]+", "_", symbol)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    include_args = " ".join(f"-I{path}" for path in include_dirs_for_roots(source_roots))
+    commands = []
+    for path in iter_source_files(source_roots):
+        try:
+            text = path.read_text(errors="replace")
+        except OSError:
+            continue
+        if symbol not in text:
+            continue
+        is_c = path.suffix == ".c"
+        language = "-x c" if is_c else "-x c++"
+        standard = "-std=c11" if is_c else "-std=c++17"
+        compiler = "clang" if is_c else "clang++"
+        commands.append(
+            {
+                "directory": str(workspace_root),
+                "file": str(path),
+                "command": (
+                    f"{compiler} {language} {standard} {include_args} "
+                    "-Wno-unknown-warning-option -c "
+                    f"{path}"
+                ),
+            }
+        )
+    (out_dir / "compile_commands.json").write_text(
+        json.dumps(commands, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return out_dir
+
+
+def select_query_occurrence(occurrences: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Prefer a normal source-code use, then a definition-like occurrence."""
+
+    for occurrence in occurrences:
+        path = Path(occurrence["path"])
+        if path.suffix in {".c", ".cc", ".cpp", ".cxx"} and not occurrence.get("is_definition_candidate"):
+            return occurrence
+    for occurrence in occurrences:
+        if not occurrence.get("is_definition_candidate"):
+            return occurrence
+    for occurrence in occurrences:
+        if occurrence.get("is_definition_candidate"):
+            return occurrence
+    return occurrences[0] if occurrences else None
+
+
+def did_open_file(client: Any, modules: dict[str, ModuleType], opened: set[Path], path: Path) -> None:
+    """Open a file in clangd via LSP textDocument/didOpen."""
+
+    path = path.resolve()
+    if path in opened:
+        return
+    language_id = "c" if path.suffix == ".c" else "cpp"
+    client.notify(
+        "textDocument/didOpen",
+        {
+            "textDocument": {
+                "uri": modules["spike_03"].uri(path),
+                "languageId": language_id,
+                "version": 1,
+                "text": path.read_text(errors="replace"),
+            }
+        },
+    )
+    opened.add(path)
+
+
+def symbol_from_parsed_failure(parsed_failure: ParsedBuildFailure) -> str | None:
+    """Extract a clangd-queryable symbol from S0-04 parsed output."""
+
+    primary = parsed_failure.primary_candidate or {}
+    symbol = primary.get("symbol")
+    if isinstance(symbol, str) and symbol and not symbol.endswith((".h", ".hh", ".hpp")):
+        return symbol
+    message = str(primary.get("message", ""))
+    quoted = re.search(r"'(?P<symbol>[A-Za-z_][A-Za-z0-9_]*)'", message)
+    if quoted:
+        return quoted.group("symbol")
+    return None
+
+
+def cleanup_clangd_client() -> None:
+    """Best-effort shutdown for the cached clangd subprocess."""
+
+    client = _CLANGD_CACHE.get("client")
+    proc = _CLANGD_CACHE.get("proc")
+    if client is not None:
+        try:
+            client.request("shutdown", {}, timeout=3.0)
+            client.notify("exit")
+        except Exception:
+            pass
+    if proc is not None:
+        try:
+            proc.wait(timeout=3.0)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    _CLANGD_CACHE.clear()
+
+
+def _ensure_compile_commands_for_host_clangd(
+    modules: dict[str, ModuleType],
+    *,
+    force_regenerate: bool = False,
+) -> dict[str, Any]:
+    """Generate/copy/rewrite compile_commands.json for host clangd lazily."""
+
+    started = time.perf_counter()
+    if COMPILE_COMMANDS_HOST.exists() and not force_regenerate:
+        return {
+            "status": "ok",
+            "cache_hit": True,
+            "output_path": str(COMPILE_COMMANDS_HOST),
+            "elapsed_sec": round(time.perf_counter() - started, 3),
+        }
+
+    CLANGD_WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
+    raw_source = CHROOT_BUILD_HOST / "compile_commands.json"
+    configure_tail = "reuse_existing_chroot_compile_commands"
+    if not raw_source.exists():
+        configure_script = "\n".join(
+            [
+                "set -e",
+                f"cd {CHROOT_BUILD_PREFIX}",
+                'cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles" .',
+                "test -s compile_commands.json",
+                "exit",
+            ]
+        )
+        try:
+            result = subprocess.run(
+                ["gbs", "chroot", str(GBS_ROOT)],
+                input=configure_script,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=MAX_CHROOT_CONFIGURE_SEC,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"chroot configure timed out after {MAX_CHROOT_CONFIGURE_SEC}s") from exc
+        configure_tail = "\n".join(result.stdout.splitlines()[-20:])
+        if result.returncode != 0 and not raw_source.exists():
+            raise RuntimeError(f"chroot configure failed rc={result.returncode}: {configure_tail}")
+
+    if not raw_source.exists():
+        raise RuntimeError(f"compile_commands.json missing after configure: {raw_source}")
+
+    shutil.copy2(raw_source, COMPILE_COMMANDS_RAW)
+    rewrite_result = modules["rewrite_compile_commands"].rewrite_commands(
+        str(COMPILE_COMMANDS_RAW),
+        str(COMPILE_COMMANDS_HOST),
+        str((CODING_SYSTEM_ROOT / "codes" / "pkgmgr-info").resolve()),
+        str(GBS_ROOT),
+        CHROOT_BUILD_PREFIX,
+    )
+    elapsed = time.perf_counter() - started
+    metadata = {
+        "status": "ok",
+        "cache_hit": False,
+        "configure_tail": configure_tail,
+        "raw_path": str(COMPILE_COMMANDS_RAW),
+        "output_path": str(COMPILE_COMMANDS_HOST),
+        "rewrite": rewrite_result,
+        "elapsed_sec": round(elapsed, 3),
+    }
+    _CLANGD_CACHE["compile_commands_metadata"] = metadata
+    return metadata
+
+
+def _get_or_start_host_clangd_client(modules: dict[str, ModuleType]) -> dict[str, Any]:
+    """Start host clangd once per spike run and reuse the LSP client."""
+
+    proc = _CLANGD_CACHE.get("proc")
+    if _CLANGD_CACHE.get("client") is not None and proc is not None and proc.poll() is None:
+        return _CLANGD_CACHE
+
+    clangd = find_clangd_binary()
+    if clangd is None:
+        raise RuntimeError("host clangd not found")
+
+    cmd = [
+        str(clangd),
+        f"--compile-commands-dir={CLANGD_WORKSPACE_DIR}",
+        "--background-index",
+        "--log=error",
+        "--limit-results=1000",
+    ]
+    started = time.perf_counter()
+    proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    log = modules["spike_03"].LogCollector(proc)
+    client = modules["spike_03"].JsonRpcClient(proc)
+    init = client.request(
+        "initialize",
+        {
+            "processId": os.getpid(),
+            "rootUri": modules["spike_03"].uri((CODING_SYSTEM_ROOT / "codes" / "pkgmgr-info").resolve()),
+            "capabilities": {
+                "window": {"workDoneProgress": True},
+                "textDocument": {"definition": {"linkSupport": True}, "references": {}},
+            },
+            "initializationOptions": {"clangdFileStatus": True},
+        },
+        timeout=MAX_CLANGD_INITIALIZE_SEC,
+    )
+    client.notify("initialized", {})
+    _CLANGD_CACHE.update(
+        {
+            "client": client,
+            "proc": proc,
+            "log": log,
+            "cmd": cmd,
+            "opened": set(),
+            "init_result": init,
+            "init_sec": round(time.perf_counter() - started, 3),
+            "indexed_once": False,
+        }
+    )
+    if not _CLANGD_CACHE.get("atexit_registered"):
+        atexit.register(cleanup_clangd_client)
+        _CLANGD_CACHE["atexit_registered"] = True
+    return _CLANGD_CACHE
+
+
+def _extract_symbol_for_scenario(
+    scenario: ErrorScenario,
+    parsed_failure: ParsedBuildFailure,
+) -> tuple[str | None, str]:
+    """Extract the scenario-specific semantic query target."""
+
+    primary = parsed_failure.primary_candidate or {}
+    message = str(primary.get("message", ""))
+    if scenario.error_type == "cannot_find_header":
+        header = primary.get("missing_header") or primary.get("header")
+        if not header:
+            match = re.search(r"(?:fatal error:|file not found:?)\s*[<\"']?([^>\"'\s]+\.h)", message)
+            if match:
+                header = match.group(1)
+        return (str(header), "header_include") if header else (None, "header_include")
+
+    if scenario.error_type == "undefined_reference":
+        symbol = primary.get("undefined_symbol") or primary.get("symbol")
+        if not symbol:
+            match = re.search(r"undefined reference to [`'\"“]?([^`'\"”]+)", message)
+            if match:
+                symbol = match.group(1).strip()
+        return (str(symbol), "symbol") if symbol else (None, "symbol")
+
+    if scenario.error_type == "unknown_type_name":
+        symbol = primary.get("type_name") or primary.get("symbol")
+        if not symbol:
+            match = re.search(r"unknown type name [`'\"“]?([A-Za-z_][A-Za-z0-9_]*)", message)
+            if match:
+                symbol = match.group(1)
+        if not symbol:
+            symbol = symbol_from_parsed_failure(parsed_failure)
+        return (str(symbol), "symbol") if symbol else (None, "symbol")
+
+    symbol = symbol_from_parsed_failure(parsed_failure)
+    return (symbol, "symbol") if symbol else (None, "symbol")
+
+
+def _collect_header_include_facts(header: str, source_root: Path) -> dict[str, Any]:
+    """Collect include references for cannot_find_header scenarios."""
+
+    references: list[dict[str, Any]] = []
+    include_pattern = re.compile(r"#\s*include\s*[<\"]" + re.escape(header) + r"[>\"]")
+    for path in iter_source_files([source_root]):
+        try:
+            lines = path.read_text(errors="replace").splitlines()
+        except OSError:
+            continue
+        for line_index, line in enumerate(lines):
+            if include_pattern.search(line):
+                references.append(
+                    {
+                        "path": str(path),
+                        "line": line_index,
+                        "character": line.find(header),
+                        "line1": line_index + 1,
+                        "character1": line.find(header) + 1,
+                        "snippet": line.strip(),
+                    }
+                )
+
+    definition = None
+    search_roots = [
+        source_root,
+        GBS_ROOT / "usr" / "include",
+    ]
+    for root in search_roots:
+        matches = list(root.rglob(header)) if root.exists() else []
+        if matches:
+            definition = {"path": str(matches[0]), "line1": 1, "snippet": f"header file {header}"}
+            break
+
+    return {
+        "status": "ok" if references or definition else "degraded",
+        "reason": None if references or definition else "header_not_found",
+        "query_kind": "header_include",
+        "symbol": header,
+        "references": references[:50],
+        "reference_count": len(references),
+        "definition": definition,
+        "definition_count": 1 if definition else 0,
+    }
+
+
+def _query_host_clangd_symbol(symbol: str, modules: dict[str, ModuleType]) -> dict[str, Any]:
+    """Query host clangd for definition/references of a normal symbol."""
+
+    started = time.perf_counter()
+    source_root = (CODING_SYSTEM_ROOT / "codes" / "pkgmgr-info").resolve()
+    occurrences = find_symbol_occurrences([source_root], symbol, limit=200)
+    query = select_query_occurrence(occurrences)
+    if query is None:
+        return {
+            "status": "degraded",
+            "reason": "symbol_not_found_in_sources",
+            "query_kind": "symbol",
+            "symbol": symbol,
+            "references": [],
+            "reference_count": 0,
+            "definition": None,
+            "definition_count": 0,
+            "elapsed_sec": round(time.perf_counter() - started, 3),
+        }
+
+    state = _get_or_start_host_clangd_client(modules)
+    client = state["client"]
+    opened: set[Path] = state["opened"]
+    did_open_file(client, modules, opened, query["path"])
+    drain_sec = CLANGD_INDEX_DRAIN_SEC if not state.get("indexed_once") else 0.5
+    client.drain(drain_sec)
+    state["indexed_once"] = True
+
+    params = {
+        "textDocument": {"uri": modules["spike_03"].uri(query["path"])},
+        "position": {"line": query["line"], "character": query["character"]},
+    }
+    ref_started = time.perf_counter()
+    references_response = client.request(
+        "textDocument/references",
+        {**params, "context": {"includeDeclaration": True}},
+        timeout=MAX_CLANGD_QUERY_SEC,
+    )
+    references_sec = time.perf_counter() - ref_started
+
+    def_started = time.perf_counter()
+    definition_response = client.request("textDocument/definition", params, timeout=MAX_CLANGD_QUERY_SEC)
+    definition_sec = time.perf_counter() - def_started
+
+    references = modules["spike_03"].normalize_locs(references_response.get("result"))
+    definitions = modules["spike_03"].normalize_locs(definition_response.get("result"))
+    status = "ok" if references or definitions else "degraded"
+    return {
+        "status": status,
+        "reason": None if status == "ok" else "missing_definition_and_references",
+        "query_kind": "symbol",
+        "symbol": symbol,
+        "query": {**query, "path": str(query["path"])},
+        "references": references[:50],
+        "reference_count": len(references),
+        "definition": definitions[0] if definitions else None,
+        "definition_count": len(definitions),
+        "timings": {
+            "references_sec": round(references_sec, 3),
+            "definition_sec": round(definition_sec, 3),
+            "total_query_sec": round(time.perf_counter() - started, 3),
+            "index_drain_sec": drain_sec,
+        },
+        "clangd": {
+            "binary": str(find_clangd_binary()),
+            "command": state.get("cmd"),
+            "init_sec": state.get("init_sec"),
+            "stderr_tail": getattr(state.get("log"), "lines", [])[-80:],
+        },
+    }
+
+
+def query_clangd_symbol(
+    *,
+    workspace_root: Path,
+    source_roots: list[Path],
+    symbol: str,
+    modules: dict[str, ModuleType],
+    max_total_sec: int = MAX_CLANGD_SELF_TEST_SEC,
+) -> dict[str, Any]:
+    """Compatibility wrapper: query host clangd with rewritten compile commands."""
+
+    del workspace_root, source_roots, max_total_sec
+    _ensure_compile_commands_for_host_clangd(modules)
+    return _query_host_clangd_symbol(symbol, modules)
+
+
 def collect_clangd_facts(
+    scenario: ErrorScenario,
     worktree_path: Path,
     parsed_failure: ParsedBuildFailure,
     modules: dict[str, ModuleType],
     gate: SideEffectGate,
 ) -> dict[str, Any]:
-    """Collect semantic facts with clangd using the S0-03 JSON-RPC client.
+    """Collect semantic facts via host clangd and explicit compile_commands.
 
-    Future Part 1 implementation should:
-      1. find the primary symbol/source location from parsed_failure,
-      2. start clangd with the scenario compile_commands dir,
-      3. query definition/references with spike_03.JsonRpcClient,
-      4. mark macro/token-paste references confidence low/medium per S0-03.
-
-    This is side-effectful because it launches clangd; it is intentionally not
-    called during Step 0.
+    Spike path: GBS chroot generates compile_commands.json once, the helper
+    rewrites chroot paths to host paths, and host clangd indexes
+    codes/pkgmgr-info. Failures degrade evidence instead of aborting repair.
     """
 
+    del worktree_path
     gate.require("clangd semantic collection")
-    _ = (worktree_path, parsed_failure, modules)
-    raise NotImplementedError("S0-A Part 1 will wire real clangd collection here")
+    started = time.perf_counter()
+    degraded_reasons: list[str] = []
+    facts: dict[str, Any] = {
+        "status": "ok",
+        "references": [],
+        "reference_count": 0,
+        "definition": None,
+        "definition_count": 0,
+        "confidence": "high",
+        "semantic_unavailable": False,
+        "compile_commands_provenance": "explicit_path",
+        "degraded_reasons": degraded_reasons,
+        "backend": "clangd_18.1.3_host",
+        "semantic_source_root": str((CODING_SYSTEM_ROOT / "codes" / "pkgmgr-info").resolve()),
+    }
+
+    try:
+        facts["compile_commands"] = _ensure_compile_commands_for_host_clangd(modules)
+    except Exception as exc:
+        degraded_reasons.append(f"chroot_configure_failed: {exc}")
+        facts.update(
+            {
+                "status": "degraded",
+                "confidence": "low",
+                "semantic_unavailable": True,
+                "elapsed_sec": round(time.perf_counter() - started, 3),
+            }
+        )
+        return facts
+
+    symbol, query_kind = _extract_symbol_for_scenario(scenario, parsed_failure)
+    facts["query_kind"] = query_kind
+    facts["symbol"] = symbol
+    if not symbol:
+        degraded_reasons.append("no_symbol_to_query")
+        facts.update(
+            {
+                "status": "degraded",
+                "confidence": "low",
+                "semantic_unavailable": True,
+                "elapsed_sec": round(time.perf_counter() - started, 3),
+            }
+        )
+        return facts
+
+    try:
+        if query_kind == "header_include":
+            query_result = _collect_header_include_facts(symbol, CODING_SYSTEM_ROOT / "codes" / "pkgmgr-info")
+        else:
+            query_result = _query_host_clangd_symbol(symbol, modules)
+        facts.update(query_result)
+        if query_result.get("status") != "ok":
+            degraded_reasons.append(str(query_result.get("reason", "clangd_query_degraded")))
+            facts["status"] = "degraded"
+            facts["confidence"] = "medium"
+    except Exception as exc:
+        degraded_reasons.append(f"clangd_query_failed: {exc}")
+        facts.update(
+            {
+                "status": "degraded",
+                "confidence": "low",
+                "semantic_unavailable": True,
+            }
+        )
+
+    facts["degraded_reasons"] = degraded_reasons
+    facts["elapsed_sec"] = round(time.perf_counter() - started, 3)
+    return facts
+
+
+def collect_clangd_facts_integration_self_test(modules: dict[str, ModuleType]) -> dict[str, Any]:
+    """Self-test collect_clangd_facts end-to-end on pkgmgrinfo_appinfo_h."""
+
+    cleanup_clangd_client()
+    if COMPILE_COMMANDS_HOST.exists():
+        COMPILE_COMMANDS_HOST.unlink()
+    if COMPILE_COMMANDS_RAW.exists():
+        COMPILE_COMMANDS_RAW.unlink()
+
+    scenario = ERROR_SCENARIOS["E3_unknown_type_name_cascade"]
+    parsed = ParsedBuildFailure(
+        parser_name="self-test",
+        log_path=Path("/tmp/coding-system-s0/self-test-clangd-integration.log"),
+        parsed_error_count=1,
+        primary_candidate={
+            "message": "unknown type name 'pkgmgrinfo_appinfo_h'",
+            "type_name": "pkgmgrinfo_appinfo_h",
+            "source_location": {
+                "file": str(CODING_SYSTEM_ROOT / "codes/pkgmgr-info/src/common/pkgmgrinfo_appinfo.cc"),
+                "line": 91,
+                "column": 33,
+            },
+        },
+        raw_result={"parser": "self-test"},
+    )
+    gate = SideEffectGate(enabled=True, reason="self-test-clangd-integration")
+    started = time.perf_counter()
+    facts = collect_clangd_facts(
+        scenario,
+        CODING_SYSTEM_ROOT / "codes" / "pkgmgr-info",
+        parsed,
+        modules,
+        gate,
+    )
+    definition = facts.get("definition") or {}
+    pass_status = (
+        facts.get("status") == "ok"
+        and int(facts.get("reference_count", 0)) >= 100
+        and str(definition.get("path", "")).endswith("include/pkgmgrinfo_type.h")
+    )
+    return {
+        "test": "self-test-clangd-integration",
+        "status": "PASS" if pass_status else "FAIL",
+        "elapsed_sec": round(time.perf_counter() - started, 3),
+        "expected": {
+            "references_count_min": 100,
+            "definition_suffix": "include/pkgmgrinfo_type.h",
+        },
+        "facts": facts,
+    }
+
+
+def collect_clangd_facts_self_test(modules: dict[str, ModuleType]) -> dict[str, Any]:
+    """Backward-compatible alias for the integrated clangd self-test."""
+
+    result = collect_clangd_facts_integration_self_test(modules)
+    result["test"] = "self-test-clangd"
+    return result
 
 
 def collect_evidence_packet(
@@ -431,10 +1082,9 @@ def collect_evidence_packet(
 
     clangd_facts: dict[str, Any] = {}
     degraded: list[str] = []
-    try:
-        clangd_facts = collect_clangd_facts(worktree_path, parsed_failure, modules, gate)
-    except NotImplementedError:
-        degraded.append("clangd_collector_framework_only_step_0")
+    clangd_facts = collect_clangd_facts(scenario, worktree_path, parsed_failure, modules, gate)
+    if clangd_facts.get("status") != "ok":
+        degraded.append(f"clangd:{clangd_facts.get('reason', 'unknown_degraded_reason')}")
 
     excerpt = modules["spike_05"].bounded_excerpt(
         parsed_failure.log_path,
@@ -479,9 +1129,9 @@ def collect_evidence_packet(
             "strategy": "framework_placeholder",
             "note": "S2b-03 owns full primary/cascade parser. S0-A uses the S0-04 primary candidate plus bounded summary.",
         } if scenario.error_type == "unknown_type_name" else None,
-        "semantic_unavailable": not bool(clangd_facts),
+        "semantic_unavailable": bool(clangd_facts.get("semantic_unavailable")),
         "clangd_stale": False,
-        "compile_commands_provenance": "future_part1_build_worktree",
+        "compile_commands_provenance": clangd_facts.get("compile_commands_provenance", "explicit_path"),
         "degraded_reason": ";".join(degraded) if degraded else None,
         "ambiguous_facts": [],
         "collection_metadata": {
@@ -571,10 +1221,19 @@ def validate_patch(patch_text: str, worktree_path: Path) -> PatchValidationResul
     touched: list[str] = []
     if not patch_text.strip():
         return PatchValidationResult(False, "empty_patch", 0, [])
-    if len(lines) > MAX_PATCH_LINES:
-        return PatchValidationResult(False, "patch_too_large", len(lines), [])
     if not any(line.startswith("--- ") for line in lines) or not any(line.startswith("+++ ") for line in lines):
         return PatchValidationResult(False, "not_unified_diff", len(lines), [])
+
+    # +/- change-line count per Compiler Agent v5.2-RC2.4 §5.2.
+    # Excludes diff headers (---/+++), hunk headers (@@), and context lines.
+    change_line_count = sum(
+        1
+        for line in lines
+        if (line.startswith("+") and not line.startswith("+++"))
+        or (line.startswith("-") and not line.startswith("---"))
+    )
+    if change_line_count > MAX_PATCH_LINES:
+        return PatchValidationResult(False, "patch_too_large", change_line_count, [])
 
     for line in lines:
         if not line.startswith(("--- ", "+++ ")):
@@ -588,9 +1247,9 @@ def validate_patch(patch_text: str, worktree_path: Path) -> PatchValidationResul
         try:
             candidate.relative_to(worktree_path.resolve())
         except ValueError:
-            return PatchValidationResult(False, "patch_path_escapes_worktree", len(lines), touched)
+            return PatchValidationResult(False, "patch_path_escapes_worktree", change_line_count, touched)
         touched.append(path_text)
-    return PatchValidationResult(True, None, len(lines), sorted(set(touched)))
+    return PatchValidationResult(True, None, change_line_count, sorted(set(touched)))
 
 
 def apply_patch_to_worktree(patch_text: str, worktree_path: Path, gate: SideEffectGate) -> CommandResult:
@@ -933,54 +1592,118 @@ def test_rebuild_fails() -> dict[str, Any]:
 
 
 def test_bounded_repair_limit() -> dict[str, Any]:
-    """Pure-local failure test stub: exactly two patch attempts, no third.
+    """Half-real test: real tmp git worktree + validate/apply, mock LLM/build.
 
-    Assertion design for Step 2:
-      - mock LLM returns a valid unified diff every time,
-      - mock rebuild fails every time,
-      - controller stops after MAX_PATCH_ATTEMPTS,
-      - assert llm_call_count == 2, never 3.
+    Assertions:
+      - llm_call_count == MAX_PATCH_ATTEMPTS (exactly 2)
+      - llm_call_count != 3
+      - final_status == fail_safe
+      - failure_envelope.reason_code == max_patch_attempts_exhausted
+      - failure_envelope.attempt_index == 2
     """
 
-    llm_call_count = 0
-    rebuild_failures = 0
+    import tempfile
+    from unittest.mock import patch as mock_patch
 
-    def mock_llm_patch() -> str:
-        nonlocal llm_call_count
-        llm_call_count += 1
-        return (
-            "--- a/CMakeLists.txt\n"
-            "+++ b/CMakeLists.txt\n"
-            "@@ -1,1 +1,1 @@\n"
-            "-PROJECT(pkgmgr-info)\n"
-            "+PROJECT(pkgmgr-info)\n"
+    with tempfile.TemporaryDirectory(prefix="s0a_test_bounded_") as tmp:
+        tmp_path = Path(tmp)
+        subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.name", "test"], cwd=tmp_path, check=True)
+        (tmp_path / "CMakeLists.txt").write_text("PROJECT(test)\n", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=tmp_path, check=True, capture_output=True)
+
+        llm_call_count = 0
+
+        def mock_llm(*_args: Any, **_kwargs: Any) -> LLMCallResult:
+            nonlocal llm_call_count
+            llm_call_count += 1
+            old_project = "test" if llm_call_count == 1 else f"test_mock_{llm_call_count - 1}"
+            new_project = f"test_mock_{llm_call_count}"
+            return LLMCallResult(
+                scenario_id="TEST_BOUNDED",
+                attempt_index=llm_call_count,
+                provider="mock",
+                model="mock",
+                request_id=f"mock-{llm_call_count}",
+                content=(
+                    "--- a/CMakeLists.txt\n"
+                    "+++ b/CMakeLists.txt\n"
+                    "@@ -1 +1 @@\n"
+                    f"-PROJECT({old_project})\n"
+                    f"+PROJECT({new_project})\n"
+                ),
+                token_usage={"in": 10, "out": 5, "total": 15},
+                duration_ms=1,
+                finish_reason="stop",
+            )
+
+        def mock_build_fail(*_args: Any, **_kwargs: Any) -> CommandResult:
+            return CommandResult(
+                command=["gbs", "build"],
+                cwd=tmp_path,
+                exit_code=1,
+                duration_sec=0.1,
+                tail_excerpt="build failed (mock)",
+            )
+
+        mock_evidence = EvidenceCollectionResult(
+            packet={"evidence_id": "EP-test", "schema": "evidence_packet.v1.spike_A"},
+            raw_data_status={"status": "allowed"},
+            clangd_facts={},
+            degraded_reasons=[],
         )
+        mock_parsed = ParsedBuildFailure(
+            parser_name="mock",
+            log_path=Path("/tmp/mock.log"),
+            parsed_error_count=1,
+            primary_candidate={
+                "message": "mock error",
+                "line_no": 1,
+                "source_location": {"file": str(tmp_path / "CMakeLists.txt"), "line": 1, "column": 1},
+            },
+            raw_result={"parser": "mock"},
+        )
+        fake_scenario = ErrorScenario(
+            scenario_id="TEST_BOUNDED",
+            package="pkgmgr-info",
+            error_type="mock_error",
+            source_file=Path("CMakeLists.txt"),
+            mutation_kind="mock",
+            mutation_target="mock",
+            expected_primary_hint="mock",
+            notes="test_bounded_repair_limit half-real test",
+        )
+        gate = SideEffectGate(enabled=True, reason="test_bounded_repair_limit half-real")
 
-    for _attempt_index in range(1, MAX_PATCH_ATTEMPTS + 1):
-        patch = mock_llm_patch()
-        validation = validate_patch(patch, CODING_SYSTEM_ROOT)
-        assert validation.accepted, validation.reason
-        rebuild_failures += 1
+        with mock_patch(f"{__name__}.create_isolated_worktree", return_value=tmp_path), \
+             mock_patch(f"{__name__}.apply_error_mutation", return_value=None), \
+             mock_patch(f"{__name__}.run_gbs_build", side_effect=mock_build_fail), \
+             mock_patch(f"{__name__}.parse_build_log", return_value=mock_parsed), \
+             mock_patch(f"{__name__}.collect_evidence_packet", return_value=mock_evidence), \
+             mock_patch(f"{__name__}.call_llm_for_patch", side_effect=mock_llm), \
+             mock_patch(f"{__name__}.write_trace", return_value=None), \
+             mock_patch(f"{__name__}.emit_event", return_value=None):
+            result = run_repair_loop_for_scenario(fake_scenario, {}, gate)
 
-    failure_envelope = {
-        "failure_class": "bounded_repair_limit_reached",
-        "reason_code": "max_patch_attempts_exhausted",
-    }
-    assert rebuild_failures == MAX_PATCH_ATTEMPTS
-    assert llm_call_count == MAX_PATCH_ATTEMPTS, "LLM must be called exactly 2 times, not 3"
-    assert llm_call_count != 3
+        assert llm_call_count == MAX_PATCH_ATTEMPTS, (
+            f"LLM must be called exactly 2 times, got {llm_call_count}"
+        )
+        assert llm_call_count != 3, "LLM must never be called 3rd time"
+        assert result.final_status == "fail_safe", f"expected fail_safe, got {result.final_status}"
+        assert result.failure_envelope is not None
+        assert result.failure_envelope.get("reason_code") == "max_patch_attempts_exhausted"
+        assert result.failure_envelope.get("attempt_index") == MAX_PATCH_ATTEMPTS
 
-    return {
-        "test": "test_bounded_repair_limit",
-        "status": "stubbed_for_step_2",
-        "llm_calls": llm_call_count,
-        "assertions": {
-            "llm_calls_eq_2": llm_call_count == 2,
-            "llm_calls_ne_3": llm_call_count != 3,
-            "failure_class": failure_envelope["failure_class"],
-        },
-        "expected": "after two failed patches emit failure envelope; no third call",
-    }
+        return {
+            "test": "test_bounded_repair_limit",
+            "status": "PASS",
+            "mode": "half-real (mock LLM/build, real git worktree + validate_patch + git apply)",
+            "llm_calls": llm_call_count,
+            "final_status": result.final_status,
+            "failure_envelope": result.failure_envelope,
+        }
 
 
 def test_uncommitted_changes() -> dict[str, Any]:
@@ -1021,6 +1744,7 @@ def describe_framework() -> dict[str, Any]:
             "LogErrorParser": str(SPIKE_04_PATH),
             "EvidencePacket": str(SPIKE_05_PATH),
             "clangd_client": str(SPIKE_03_PATH),
+            "compile_commands_rewrite": str(REWRITE_COMPILE_COMMANDS_PATH),
             "RawDataDetector": str(SPIKE_06_PATH),
             "LLMAdapter": str(LLM_ADAPTER_PATH),
         },
@@ -1035,7 +1759,12 @@ def describe_framework() -> dict[str, Any]:
             test_patch_format_invalid(),
             test_apply_conflict(),
             test_rebuild_fails(),
-            test_bounded_repair_limit(),
+            {
+                "test": "test_bounded_repair_limit",
+                "status": "implemented_half_real_run_with_--mode test-bounded",
+                "llm_calls": "asserted at runtime",
+                "expected": "real tmp git repo + real validate/apply; mock LLM/build; exactly 2 LLM calls",
+            },
             test_uncommitted_changes(),
             test_non_git_repo(),
         ],
@@ -1048,7 +1777,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--mode",
-        choices=["describe", "check-imports", "run-part1"],
+        choices=[
+            "describe",
+            "check-imports",
+            "test-bounded",
+            "self-test-clangd",
+            "self-test-clangd-integration",
+            "run-part1",
+        ],
         default="describe",
         help="run-part1 is blocked unless --enable-side-effects is set later by PM instruction",
     )
@@ -1060,10 +1796,25 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(describe_framework(), indent=2, ensure_ascii=False, sort_keys=True, default=str))
         return 0
 
+    if args.mode == "test-bounded":
+        result = test_bounded_repair_limit()
+        print(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True, default=str))
+        return 0 if result.get("status") == "PASS" else 1
+
     modules = load_reused_spikes()
     if args.mode == "check-imports":
         print(json.dumps({"status": "ok", "modules": sorted(modules)}, indent=2, sort_keys=True))
         return 0
+
+    if args.mode == "self-test-clangd":
+        result = collect_clangd_facts_self_test(modules)
+        print(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True, default=str))
+        return 0 if result.get("status") == "PASS" else 1
+
+    if args.mode == "self-test-clangd-integration":
+        result = collect_clangd_facts_integration_self_test(modules)
+        print(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True, default=str))
+        return 0 if result.get("status") == "PASS" else 1
 
     if args.mode == "run-part1":
         if not args.scenario:
