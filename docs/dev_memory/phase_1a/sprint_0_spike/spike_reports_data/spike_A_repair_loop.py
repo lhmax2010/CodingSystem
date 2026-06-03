@@ -530,6 +530,7 @@ def run_gbs_build(
         "--clean",
     ]
     started = time.perf_counter()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("w", encoding="utf-8", errors="replace") as log_file:
         proc = subprocess.run(
             command,
