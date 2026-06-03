@@ -1773,36 +1773,225 @@ def run_repair_loop_for_scenario(
         write_trace(trace_path, result)
 
 
-def test_patch_format_invalid() -> dict[str, Any]:
-    """Pure-local failure test stub: invalid non-unified patch is rejected."""
+def _init_tmp_git_repo(repo_path: Path, files: dict[str, str]) -> None:
+    """Create a tiny committed git repo for pure-local failure tests."""
 
+    subprocess.run(["git", "init", "--quiet"], cwd=repo_path, check=True)
+    subprocess.run(["git", "config", "user.email", "test@test"], cwd=repo_path, check=True)
+    subprocess.run(["git", "config", "user.name", "test"], cwd=repo_path, check=True)
+    for relative_path, content in files.items():
+        path = repo_path / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo_path, check=True)
+    subprocess.run(["git", "commit", "--quiet", "-m", "init"], cwd=repo_path, check=True)
+
+
+def _local_failure_scenario(scenario_id: str) -> ErrorScenario:
+    """Return a package-agnostic scenario for local failure tests."""
+
+    return ErrorScenario(
+        scenario_id=scenario_id,
+        package="pkgmgr-info",
+        error_type="mock_error",
+        source_file=Path("CMakeLists.txt"),
+        mutation_kind="mock",
+        mutation_target="mock",
+        expected_primary_hint="mock",
+        notes=f"{scenario_id} pure-local failure-path test",
+    )
+
+
+def _mock_parsed_failure(log_path: Path) -> ParsedBuildFailure:
+    """Return a minimal parsed failure used by mocked repair-loop tests."""
+
+    return ParsedBuildFailure(
+        parser_name="mock",
+        log_path=log_path,
+        parsed_error_count=1,
+        primary_candidate={
+            "message": "mock compile error",
+            "line_no": 1,
+            "source_location": {"file": str(log_path), "line": 1, "column": 1},
+            "symbol": "mock_symbol",
+        },
+        raw_result={"parser": "mock"},
+    )
+
+
+def _mock_evidence_packet() -> EvidenceCollectionResult:
+    """Return a minimal RawDataDetector-allowed EvidencePacket."""
+
+    return EvidenceCollectionResult(
+        packet={"evidence_id": "EP-test", "schema": "evidence_packet.v1.spike_A"},
+        raw_data_status={"status": "allowed"},
+        clangd_facts={},
+        degraded_reasons=[],
+    )
+
+
+def test_patch_format_invalid() -> dict[str, Any]:
+    """Pure-local failure test: invalid non-unified patch is rejected."""
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="s0a_test_patch_format_") as tmp:
+        tmp_path = Path(tmp)
+        _init_tmp_git_repo(tmp_path, {"file.txt": "original\n"})
+        mock_llm = LLMCallResult(
+            scenario_id="TEST_PATCH_FORMAT_INVALID",
+            attempt_index=1,
+            provider="mock",
+            model="mock",
+            request_id="mock-invalid-format",
+            content="I would fix this by editing file.txt, but this is not a diff.",
+            token_usage={"in": 1, "out": 1, "total": 2},
+            duration_ms=1,
+            finish_reason="stop",
+        )
+        patch_text = extract_unified_diff(mock_llm.content)
+        validation = validate_patch(patch_text, tmp_path)
+
+    assert validation.accepted is False
+    assert validation.reason == "not_unified_diff"
     return {
         "test": "test_patch_format_invalid",
-        "status": "stubbed_for_step_2",
-        "llm_calls": 0,
-        "expected": "validate_patch rejects non-unified diff before apply",
+        "status": "PASS",
+        "setup": "tmp git repo + mock LLM content with no unified diff markers",
+        "real_llm_calls": 0,
+        "mock_llm_calls": 1,
+        "assertions": {
+            "validation.accepted": validation.accepted,
+            "validation.reason": validation.reason,
+        },
     }
 
 
 def test_apply_conflict() -> dict[str, Any]:
-    """Pure-local failure test stub: mocked git apply conflict is fail-safe."""
+    """Pure-local failure test: git apply conflict returns non-zero."""
 
+    import tempfile
+
+    patch_text = (
+        "--- a/file.txt\n"
+        "+++ b/file.txt\n"
+        "@@ -1 +1 @@\n"
+        "-original\n"
+        "+patched\n"
+    )
+    with tempfile.TemporaryDirectory(prefix="s0a_test_apply_conflict_") as tmp:
+        tmp_path = Path(tmp)
+        _init_tmp_git_repo(tmp_path, {"file.txt": "original\n"})
+        (tmp_path / "file.txt").write_text("local uncommitted edit\n", encoding="utf-8")
+        validation = validate_patch(patch_text, tmp_path)
+        assert validation.accepted is True
+        apply_result = apply_patch_to_worktree(
+            patch_text,
+            tmp_path,
+            SideEffectGate(enabled=True, reason="test_apply_conflict"),
+        )
+
+    assert apply_result.exit_code != 0
     return {
         "test": "test_apply_conflict",
-        "status": "stubbed_for_step_2",
-        "llm_calls": 0,
-        "expected": "git apply failure records apply_conflict and allows bounded retry",
+        "status": "PASS",
+        "setup": "tmp git repo with uncommitted file change; real validate_patch + real git apply --index",
+        "real_llm_calls": 0,
+        "assertions": {
+            "validation.accepted": validation.accepted,
+            "apply_result.exit_code": apply_result.exit_code,
+            "apply_result.tail_excerpt": apply_result.tail_excerpt,
+        },
     }
 
 
 def test_rebuild_fails() -> dict[str, Any]:
-    """Pure-local failure test stub: patch applies but verification build fails."""
+    """Pure-local failure test: applicable patches cannot loop forever."""
 
+    import tempfile
+    from unittest.mock import patch as mock_patch
+
+    with tempfile.TemporaryDirectory(prefix="s0a_test_rebuild_fails_") as tmp:
+        tmp_path = Path(tmp)
+        _init_tmp_git_repo(tmp_path, {"CMakeLists.txt": "PROJECT(test)\n"})
+        llm_call_count = 0
+        build_call_count = 0
+
+        def mock_llm(*_args: Any, **_kwargs: Any) -> LLMCallResult:
+            nonlocal llm_call_count
+            llm_call_count += 1
+            old_project = "test" if llm_call_count == 1 else f"test_rebuild_{llm_call_count - 1}"
+            new_project = f"test_rebuild_{llm_call_count}"
+            return LLMCallResult(
+                scenario_id="TEST_REBUILD_FAILS",
+                attempt_index=llm_call_count,
+                provider="mock",
+                model="mock",
+                request_id=f"mock-rebuild-{llm_call_count}",
+                content=(
+                    "--- a/CMakeLists.txt\n"
+                    "+++ b/CMakeLists.txt\n"
+                    "@@ -1 +1 @@\n"
+                    f"-PROJECT({old_project})\n"
+                    f"+PROJECT({new_project})\n"
+                ),
+                token_usage={"in": 2, "out": 2, "total": 4},
+                duration_ms=1,
+                finish_reason="stop",
+            )
+
+        def mock_build_fail(
+            worktree_path: Path,
+            _scenario: ErrorScenario,
+            log_path: Path,
+            _gate: SideEffectGate,
+            **_kwargs: Any,
+        ) -> CommandResult:
+            nonlocal build_call_count
+            build_call_count += 1
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_path.write_text(f"mock build failed call={build_call_count}\n", encoding="utf-8")
+            return CommandResult(
+                command=["gbs", "build"],
+                cwd=worktree_path,
+                exit_code=1,
+                duration_sec=0.01,
+                combined_log_path=log_path,
+                tail_excerpt=f"mock build failed call={build_call_count}",
+            )
+
+        scenario = _local_failure_scenario("TEST_REBUILD_FAILS")
+        gate = SideEffectGate(enabled=True, reason="test_rebuild_fails")
+        with mock_patch(f"{__name__}.create_isolated_worktree", return_value=tmp_path), \
+             mock_patch(f"{__name__}.apply_error_mutation", return_value=None), \
+             mock_patch(f"{__name__}.run_gbs_build", side_effect=mock_build_fail), \
+             mock_patch(f"{__name__}.parse_build_log", side_effect=lambda log_path, _modules: _mock_parsed_failure(log_path)), \
+             mock_patch(f"{__name__}.collect_evidence_packet", return_value=_mock_evidence_packet()), \
+             mock_patch(f"{__name__}.call_llm_for_patch", side_effect=mock_llm), \
+             mock_patch(f"{__name__}.write_trace", return_value=None), \
+             mock_patch(f"{__name__}.emit_event", return_value=None):
+            result = run_repair_loop_for_scenario(scenario, {}, gate)
+
+    assert llm_call_count <= MAX_PATCH_ATTEMPTS
+    assert llm_call_count == MAX_PATCH_ATTEMPTS
+    assert build_call_count == 1 + MAX_PATCH_ATTEMPTS
+    assert result.final_status == "fail_safe"
+    assert result.failure_envelope is not None
+    assert result.failure_envelope.get("reason_code") == "max_patch_attempts_exhausted"
+    assert all(attempt.status == "rebuild_failed" for attempt in result.attempts)
     return {
         "test": "test_rebuild_fails",
-        "status": "stubbed_for_step_2",
-        "llm_calls": 0,
-        "expected": "rebuild failure collects new failure and consumes one bounded attempt",
+        "status": "PASS",
+        "setup": "tmp git repo; mock LLM returns valid/applicable patches; mock initial build and rebuilds fail",
+        "real_llm_calls": 0,
+        "mock_llm_calls": llm_call_count,
+        "build_calls": build_call_count,
+        "assertions": {
+            "llm_call_count <= MAX_PATCH_ATTEMPTS": llm_call_count <= MAX_PATCH_ATTEMPTS,
+            "attempt_statuses": [attempt.status for attempt in result.attempts],
+            "final_status": result.final_status,
+            "failure_envelope.reason_code": result.failure_envelope.get("reason_code"),
+        },
     }
 
 
@@ -1922,24 +2111,103 @@ def test_bounded_repair_limit() -> dict[str, Any]:
 
 
 def test_uncommitted_changes() -> dict[str, Any]:
-    """Pure-local failure test stub: dirty worktree triggers fail-safe."""
+    """Pure-local failure test: dirty source repo is rejected before clone."""
 
+    import tempfile
+    from unittest.mock import patch as mock_patch
+
+    with tempfile.TemporaryDirectory(prefix="s0a_test_uncommitted_") as tmp:
+        tmp_path = Path(tmp)
+        _init_tmp_git_repo(tmp_path, {"CMakeLists.txt": "PROJECT(test)\n"})
+        (tmp_path / "CMakeLists.txt").write_text("PROJECT(dirty)\n", encoding="utf-8")
+        scenario = _local_failure_scenario("TEST_UNCOMMITTED_CHANGES")
+        gate = SideEffectGate(enabled=True, reason="test_uncommitted_changes")
+        try:
+            with mock_patch(f"{__name__}.package_repo_path", return_value=tmp_path):
+                create_isolated_worktree(scenario, "test_uncommitted", gate)
+        except RuntimeError as exc:
+            message = str(exc)
+        else:
+            raise AssertionError("create_isolated_worktree must reject dirty source repos")
+
+    assert "uncommitted changes" in message
     return {
         "test": "test_uncommitted_changes",
-        "status": "stubbed_for_step_2",
-        "llm_calls": 0,
-        "expected": "dirty worktree is rejected before mutation/apply",
+        "status": "PASS",
+        "setup": "tmp git repo with uncommitted source change; real create_isolated_worktree preflight",
+        "real_llm_calls": 0,
+        "assertions": {
+            "raised": "RuntimeError",
+            "message": message,
+            "contains_uncommitted_changes": "uncommitted changes" in message,
+        },
     }
 
 
 def test_non_git_repo() -> dict[str, Any]:
-    """Pure-local failure test stub: non-git path emits contract_violation."""
+    """Pure-local failure test: non-git source path emits contract violation."""
 
+    import tempfile
+    from unittest.mock import patch as mock_patch
+
+    with tempfile.TemporaryDirectory(prefix="s0a_test_non_git_") as tmp:
+        tmp_path = Path(tmp)
+        (tmp_path / "CMakeLists.txt").write_text("PROJECT(test)\n", encoding="utf-8")
+        scenario = _local_failure_scenario("TEST_NON_GIT_REPO")
+        gate = SideEffectGate(enabled=True, reason="test_non_git_repo")
+        try:
+            with mock_patch(f"{__name__}.package_repo_path", return_value=tmp_path):
+                create_isolated_worktree(scenario, "test_non_git", gate)
+        except RuntimeError as exc:
+            message = str(exc)
+        else:
+            raise AssertionError("create_isolated_worktree must reject non-git source paths")
+
+    assert "contract_violation" in message
+    assert "not a git repo" in message
     return {
         "test": "test_non_git_repo",
-        "status": "stubbed_for_step_2",
-        "llm_calls": 0,
-        "expected": "non-git target path emits contract_violation",
+        "status": "PASS",
+        "setup": "tmp directory without git init; real create_isolated_worktree preflight",
+        "real_llm_calls": 0,
+        "assertions": {
+            "raised": "RuntimeError",
+            "message": message,
+            "contains_contract_violation": "contract_violation" in message,
+            "contains_not_a_git_repo": "not a git repo" in message,
+        },
+    }
+
+
+def run_failure_path_tests() -> dict[str, Any]:
+    """Run all pure-local S0-A Step 2 failure-path tests."""
+
+    tests = [
+        test_patch_format_invalid,
+        test_apply_conflict,
+        test_rebuild_fails,
+        test_bounded_repair_limit,
+        test_uncommitted_changes,
+        test_non_git_repo,
+    ]
+    results: list[dict[str, Any]] = []
+    for test in tests:
+        try:
+            results.append(test())
+        except Exception as exc:
+            results.append(
+                {
+                    "test": test.__name__,
+                    "status": "FAIL",
+                    "error": {"type": type(exc).__name__, "message": str(exc)},
+                }
+            )
+    return {
+        "suite": "S0-A Step 2 failure-path tests",
+        "status": "PASS" if all(result.get("status") == "PASS" for result in results) else "FAIL",
+        "real_llm_calls": 0,
+        "gbs_builds": 0,
+        "results": results,
     }
 
 
@@ -1970,18 +2238,38 @@ def describe_framework() -> dict[str, Any]:
             "max_patch_lines": MAX_PATCH_LINES,
             "third_attempt_allowed": False,
         },
-        "failure_test_stubs": [
-            test_patch_format_invalid(),
-            test_apply_conflict(),
-            test_rebuild_fails(),
+        "failure_path_tests": [
+            {
+                "test": "test_patch_format_invalid",
+                "status": "implemented_run_with_--mode run-failure-path-tests",
+                "expected": "validate_patch rejects non-unified diff before apply",
+            },
+            {
+                "test": "test_apply_conflict",
+                "status": "implemented_run_with_--mode run-failure-path-tests",
+                "expected": "real git apply --index conflict returns non-zero",
+            },
+            {
+                "test": "test_rebuild_fails",
+                "status": "implemented_run_with_--mode run-failure-path-tests",
+                "expected": "valid/applicable patches still stop at bounded repair limit when rebuild fails",
+            },
             {
                 "test": "test_bounded_repair_limit",
                 "status": "implemented_half_real_run_with_--mode test-bounded",
                 "llm_calls": "asserted at runtime",
                 "expected": "real tmp git repo + real validate/apply; mock LLM/build; exactly 2 LLM calls",
             },
-            test_uncommitted_changes(),
-            test_non_git_repo(),
+            {
+                "test": "test_uncommitted_changes",
+                "status": "implemented_run_with_--mode run-failure-path-tests",
+                "expected": "dirty source repo is rejected before clone/mutation",
+            },
+            {
+                "test": "test_non_git_repo",
+                "status": "implemented_run_with_--mode run-failure-path-tests",
+                "expected": "non-git source path raises contract_violation",
+            },
         ],
     }
 
@@ -1995,7 +2283,13 @@ def main(argv: list[str] | None = None) -> int:
         choices=[
             "describe",
             "check-imports",
+            "test-patch-format-invalid",
+            "test-apply-conflict",
+            "test-rebuild-fails",
             "test-bounded",
+            "test-uncommitted-changes",
+            "test-non-git-repo",
+            "run-failure-path-tests",
             "self-test-clangd",
             "self-test-clangd-integration",
             "run-part1",
@@ -2013,6 +2307,36 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.mode == "test-bounded":
         result = test_bounded_repair_limit()
+        print(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True, default=str))
+        return 0 if result.get("status") == "PASS" else 1
+
+    if args.mode == "test-patch-format-invalid":
+        result = test_patch_format_invalid()
+        print(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True, default=str))
+        return 0 if result.get("status") == "PASS" else 1
+
+    if args.mode == "test-apply-conflict":
+        result = test_apply_conflict()
+        print(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True, default=str))
+        return 0 if result.get("status") == "PASS" else 1
+
+    if args.mode == "test-rebuild-fails":
+        result = test_rebuild_fails()
+        print(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True, default=str))
+        return 0 if result.get("status") == "PASS" else 1
+
+    if args.mode == "test-uncommitted-changes":
+        result = test_uncommitted_changes()
+        print(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True, default=str))
+        return 0 if result.get("status") == "PASS" else 1
+
+    if args.mode == "test-non-git-repo":
+        result = test_non_git_repo()
+        print(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True, default=str))
+        return 0 if result.get("status") == "PASS" else 1
+
+    if args.mode == "run-failure-path-tests":
+        result = run_failure_path_tests()
         print(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True, default=str))
         return 0 if result.get("status") == "PASS" else 1
 
