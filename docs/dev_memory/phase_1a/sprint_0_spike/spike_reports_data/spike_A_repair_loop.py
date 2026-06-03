@@ -64,6 +64,34 @@ DEFAULT_CLANGD = Path("/usr/bin/clangd")
 PART2_SAMPLE_COUNT = 3
 PART2_LLM_TIMEOUT_RETRIES = 1
 PART2_RAW_LOG_CHAR_LIMIT = 12000
+CNEI_EVIDENCE_PACKET_MAX_TOKENS = 4000
+PART2_SHARED_SYSTEM_PROMPT = (
+    "You are repairing a Tizen C/C++ package. Return only a unified diff.\n"
+    "The diff context must match the existing source exactly.\n"
+    "Do not restructure or refactor unrelated code.\n"
+    "Do not rename all call sites unless evidence explicitly supports it.\n"
+    "Prefer the minimal package-local fix.\n"
+    "Repair scope is limited to the current package worktree only."
+)
+NEGATIVE_FACT_REQUIRED_FIELDS = {
+    "check",
+    "result",
+    "scope",
+    "confidence",
+    "source",
+    "implication",
+}
+NEGATIVE_FACT_ALLOWED_RESULTS = {"not_found", "unavailable", "present"}
+NEGATIVE_FACT_FORBIDDEN_PHRASES = (
+    "must",
+    "do not",
+    "prefer",
+    "return only",
+    "diff context",
+    "repair scope",
+    "rename all call sites",
+    "minimal fix",
+)
 _CLANGD_CACHE: dict[str, Any] = {}
 
 SPIKE_03_PATH = SPIKE_REPORTS_DATA / "spike_03_clangd_lsp_eval.py"
@@ -294,6 +322,39 @@ def safe_asdict(obj: Any) -> Any:
     if hasattr(obj, "__dict__") and not isinstance(obj, type):
         return safe_asdict(vars(obj))
     return obj
+
+
+def estimate_text_tokens(text: str) -> int:
+    """Estimate tokens for Part 2 metadata without depending on a running spike module."""
+
+    try:
+        import tiktoken  # type: ignore[import-not-found]
+
+        encoding = tiktoken.get_encoding("cl100k_base")
+        return len(encoding.encode(text))
+    except Exception:
+        return max(1, (len(text) + 3) // 4)
+
+
+def estimate_json_tokens(value: Any) -> int:
+    """Estimate tokens for a JSON-serializable value."""
+
+    return estimate_text_tokens(
+        json.dumps(safe_asdict(value), ensure_ascii=False, sort_keys=True, default=str)
+    )
+
+
+def refresh_packet_token_metadata(packet: dict[str, Any]) -> None:
+    """Refresh packet token metadata after Part 2 injects negative_facts."""
+
+    collection_metadata = packet.setdefault("collection_metadata", {})
+    encoded = json.dumps(packet, ensure_ascii=False, sort_keys=True, default=str)
+    token_estimate = estimate_text_tokens(encoded)
+    collection_metadata["total_tokens_estimate"] = token_estimate
+    collection_metadata["packet_char_count"] = len(encoded)
+    collection_metadata["budget_tokens"] = CNEI_EVIDENCE_PACKET_MAX_TOKENS
+    collection_metadata["budget_pass"] = token_estimate <= CNEI_EVIDENCE_PACKET_MAX_TOKENS
+    collection_metadata["token_estimator"] = "tiktoken_or_chars_div_4"
 
 
 def load_spike_module(module_name: str, path: Path) -> ModuleType:
@@ -1300,15 +1361,7 @@ def collect_evidence_packet(
             "parser_primary_candidate": primary,
             "clangd": clangd_facts,
         },
-        "negative_facts": [
-            {
-                "check": "raw build log included in prompt",
-                "result": "not_present",
-                "confidence": "high",
-                "scope": "prompt_boundary",
-                "implication": "Only bounded log_excerpt is allowed into LLM prompt.",
-            }
-        ],
+        "negative_facts": [],
         "known_issue_matches": [],
         "log_excerpt": [excerpt],
         "cascade_summary": {
@@ -1340,83 +1393,129 @@ def collect_evidence_packet(
 def collect_negative_facts(
     scenario: ErrorScenario,
     parsed_failure: ParsedBuildFailure,
-    evidence: EvidenceCollectionResult | None = None,
+    worktree_path: Path,
 ) -> list[dict[str, Any]]:
-    """Collect prompt-safe negative facts for Part 2 variant A/C.
+    """Collect CNEI-style tool-derived negative code facts on mutated worktree.
 
-    These facts tell the LLM what *not* to infer. They are bounded metadata,
-    not raw logs, and they intentionally mirror the EvidencePacket contract
-    rather than introducing a new evidence source.
+    Negative facts are not behavioral prompt guidance. They are bounded facts
+    from concrete checks against the error-time source/build configuration.
     """
 
-    primary = parsed_failure.primary_candidate or {}
-    facts = [
-        {
-            "check": "raw build log included in prompt",
-            "result": "not_present",
-            "confidence": "high",
-            "scope": "prompt_boundary",
-            "implication": "Only bounded log_excerpt/evidence facts should drive the patch.",
-        },
-        {
-            "check": "repair scope",
-            "result": "package_worktree_only",
-            "confidence": "high",
-            "scope": scenario.package,
-            "implication": "Patch must edit only files in the mutated package worktree.",
-        },
-        {
-            "check": "diff context",
-            "result": "must_match_existing_source",
-            "confidence": "high",
-            "scope": "patch_generation",
-            "implication": "Do not invent or restructure surrounding code; use minimal exact-context hunks.",
-        },
-    ]
     if scenario.error_type == "undefined_reference":
-        facts.append(
-            {
-                "check": "undefined_reference root cause",
-                "result": "not_namespace_or_header_lookup",
-                "confidence": "medium",
-                "scope": primary.get("symbol") or primary.get("undefined_symbol"),
-                "implication": "Prefer link dependency evidence over guessing namespace/type fixes.",
-            }
-        )
+        return [_negative_fact_e2_missing_parser_library(worktree_path)]
     if scenario.error_type == "cannot_find_header":
-        facts.append(
-            {
-                "check": "header exists",
-                "result": "do_not_create_new_header",
-                "confidence": "medium",
-                "scope": primary.get("missing_header") or primary.get("header"),
-                "implication": "Prefer include path/build config repair over creating a replacement header.",
-            }
-        )
+        return [_negative_fact_e1_missing_parser_include(worktree_path)]
     if scenario.error_type == "unknown_type_name":
-        facts.append(
-            {
-                "check": "type drift",
-                "result": "do_not_rename_all_call_sites_without_evidence",
-                "confidence": "medium",
-                "scope": primary.get("type_name") or primary.get("symbol"),
-                "implication": "Prefer restoring the missing public typedef when clangd references show broad usage.",
-            }
-        )
+        return [_negative_fact_e3_missing_typedef(worktree_path, parsed_failure)]
+    return []
 
-    if evidence is not None:
-        existing = evidence.packet.get("negative_facts") or []
-        merged = existing + facts
-        seen: set[str] = set()
-        unique: list[dict[str, Any]] = []
-        for fact in merged:
-            key = json.dumps(fact, sort_keys=True, ensure_ascii=False)
-            if key in seen:
-                continue
-            seen.add(key)
-            unique.append(fact)
-        return unique
-    return facts
+
+def _grep_fixed(pattern: str, paths: list[Path], *, cwd: Path) -> tuple[str, str]:
+    """Run grep -F for a bounded fact check."""
+
+    command = ["grep", "-nF", pattern, *[str(path) for path in paths]]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=cwd,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "unavailable", " ".join(command)
+    if result.returncode == 0:
+        return "present", " ".join(command)
+    if result.returncode == 1:
+        return "not_found", " ".join(command)
+    return "unavailable", " ".join(command)
+
+
+def _rg_fixed(pattern: str, paths: list[Path], *, cwd: Path) -> tuple[str, str]:
+    """Run ripgrep for a bounded fact check, reporting unavailable if rg cannot run."""
+
+    rg = shutil.which("rg")
+    if rg is None:
+        return "unavailable", f"rg -nF {pattern!r} " + " ".join(str(path) for path in paths)
+    command = [rg, "-nF", pattern, *[str(path) for path in paths]]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=cwd,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "unavailable", " ".join(command)
+    if result.returncode == 0:
+        return "present", " ".join(command)
+    if result.returncode == 1:
+        return "not_found", " ".join(command)
+    return "unavailable", " ".join(command)
+
+
+def _fact_confidence(result: str, default: str = "high") -> str:
+    return default if result != "unavailable" else "medium"
+
+
+def _negative_fact_e1_missing_parser_include(worktree_path: Path) -> dict[str, Any]:
+    result, command = _grep_fixed(
+        "src/parser/include",
+        [Path("CMakeLists.txt")],
+        cwd=worktree_path,
+    )
+    return {
+        "check": "active include dirs / CMake INCLUDE_DIRECTORIES contains src/parser/include",
+        "result": result,
+        "scope": "build_config",
+        "confidence": _fact_confidence(result),
+        "source": "CMake grep",
+        "implication": "the header include directory is not available to this target",
+        "command": command,
+    }
+
+
+def _negative_fact_e2_missing_parser_library(worktree_path: Path) -> dict[str, Any]:
+    result, command = _grep_fixed(
+        "${TARGET_LIB_PKGMGR_PARSER}",
+        [Path("tool/CMakeLists.txt")],
+        cwd=worktree_path,
+    )
+    return {
+        "check": "tool/CMakeLists.txt target_link_libraries contains ${TARGET_LIB_PKGMGR_PARSER}",
+        "result": result,
+        "scope": "build_config",
+        "confidence": _fact_confidence(result),
+        "source": "CMake grep",
+        "implication": "the tool target is missing the parser library dependency",
+        "command": command,
+    }
+
+
+def _negative_fact_e3_missing_typedef(
+    worktree_path: Path,
+    parsed_failure: ParsedBuildFailure,
+) -> dict[str, Any]:
+    result, command = _rg_fixed(
+        "typedef void *pkgmgrinfo_appinfo_h;",
+        [Path("include"), Path("src")],
+        cwd=worktree_path,
+    )
+    type_name = (parsed_failure.primary_candidate or {}).get("type_name") or "pkgmgrinfo_appinfo_h"
+    return {
+        "check": "grep -R 'typedef void *pkgmgrinfo_appinfo_h;' include/ src/",
+        "result": result,
+        "scope": "source_code",
+        "confidence": _fact_confidence(result),
+        "source": "ripgrep",
+        "implication": f"the typedef definition is absent from the mutated source tree for {type_name}",
+        "command": command,
+    }
 
 
 def build_llm_prompt(evidence: EvidenceCollectionResult, attempt_index: int) -> tuple[str, str]:
@@ -1452,11 +1551,7 @@ def build_variant_prompt(
     """Render a Part 2 A/B prompt variant without mutating source evidence."""
 
     variant_id = variant_config["variant_id"]
-    system = (
-        "You are repairing a Tizen C/C++ package. Return only a unified diff. "
-        "The diff context must match the existing source exactly. Do not "
-        "restructure unrelated code. Do not include explanation outside the diff."
-    )
+    system = PART2_SHARED_SYSTEM_PROMPT
     metadata = {
         "scenario_id": scenario.scenario_id,
         "variant_id": variant_id,
@@ -1475,13 +1570,15 @@ def build_variant_prompt(
                 "raw_log_path": str(raw_log_path),
                 "raw_log_char_limit": limit,
                 "raw_log_excerpt_chars": len(raw_log_excerpt),
+                "raw_log_chars": len(raw_log_excerpt),
+                "evidence_packet_tokens": 0,
+                "spike_budget_overflow_observed": False,
                 "raw_log_policy": "LOCAL_ONLY_EXPERIMENTAL_TRACE; do not commit raw log",
             }
         )
         user_payload = {
-            "instruction": "Generate a minimal unified diff that fixes the compile failure.",
+            "instruction": "Generate a unified diff that fixes the compile failure.",
             "experiment": "S0-A Part 2 raw log baseline",
-            "variant": metadata,
             "scenario": safe_asdict(scenario),
             "primary_candidate": parsed_failure.primary_candidate,
             "max_patch_lines": MAX_PATCH_LINES,
@@ -1497,20 +1594,23 @@ def build_variant_prompt(
         raise ValueError("evidence is required for EvidencePacket variants")
     packet = json.loads(json.dumps(safe_asdict(evidence.packet), ensure_ascii=False))
     if variant_config.get("include_negative_facts"):
-        packet["negative_facts"] = collect_negative_facts(scenario, parsed_failure, evidence)
+        packet["negative_facts"] = list(packet.get("negative_facts") or [])
     else:
         packet.pop("negative_facts", None)
 
+    evidence_packet_tokens = estimate_json_tokens(packet)
     metadata.update(
         {
             "include_negative_facts": bool(variant_config.get("include_negative_facts")),
             "evidence_id": packet.get("evidence_id"),
+            "evidence_packet_tokens": evidence_packet_tokens,
+            "raw_log_chars": 0,
+            "spike_budget_overflow_observed": evidence_packet_tokens > CNEI_EVIDENCE_PACKET_MAX_TOKENS,
         }
     )
     user_payload = {
-        "instruction": "Generate a minimal unified diff that fixes the compile failure.",
+        "instruction": "Generate a unified diff that fixes the compile failure.",
         "experiment": "S0-A Part 2 EvidencePacket A/B",
-        "variant": metadata,
         "scenario": safe_asdict(scenario),
         "max_patch_lines": MAX_PATCH_LINES,
         "evidence_packet": packet,
@@ -2091,6 +2191,12 @@ def call_llm_for_part2_variant(
         raw_log_path=raw_log_path,
         sample_index=sample_index,
     )
+    prompt_metadata.update(
+        {
+            "prompt_chars": len(system) + len(prompt),
+            "estimated_prompt_tokens": estimate_text_tokens(system + "\n" + prompt),
+        }
+    )
     llm_adapter_error = getattr(modules.get("llm_adapter"), "LLMAdapterError", Exception)
     scenario_label = scenario.scenario_id.split("_", 1)[0]
     sample_id = f"part2_{scenario_label}_{variant_config['variant_id']}_sample{sample_index}"
@@ -2174,16 +2280,25 @@ def prepare_part2_scenario_context(
             context.update({"status": "parse_failed", "error": "no primary error parsed"})
             return context
         evidence = collect_evidence_packet(scenario, worktree_path, parsed_failure, modules, gate)
+        negative_facts = collect_negative_facts(scenario, parsed_failure, worktree_path)
+        evidence.packet["negative_facts"] = negative_facts
+        refresh_packet_token_metadata(evidence.packet)
         context.update(
             {
                 "status": "ok",
                 "evidence": evidence,
+                "negative_facts": negative_facts,
                 "evidence_summary": {
                     "evidence_id": evidence.packet.get("evidence_id"),
                     "raw_data_status": evidence.raw_data_status,
                     "reference_count": evidence.clangd_facts.get("reference_count"),
                     "definition": evidence.clangd_facts.get("definition"),
-                    "estimated_tokens": evidence.packet.get("metadata", {}).get("estimated_tokens"),
+                    "estimated_tokens": evidence.packet.get("collection_metadata", {}).get("total_tokens_estimate"),
+                    "spike_budget_overflow_observed": (
+                        int(evidence.packet.get("collection_metadata", {}).get("total_tokens_estimate") or 0)
+                        > CNEI_EVIDENCE_PACKET_MAX_TOKENS
+                    ),
+                    "negative_facts_count": len(negative_facts),
                 },
                 "_parsed_failure_obj": parsed_failure,
             }
@@ -2245,6 +2360,10 @@ def run_part2_sample(
         raw_log_path=raw_log_path,
     )
     sample["llm_call"] = llm_call
+    sample["prompt_metadata"] = llm_call.get("prompt_metadata")
+    sample["spike_budget_overflow_observed"] = bool(
+        (sample.get("prompt_metadata") or {}).get("spike_budget_overflow_observed")
+    )
     if llm_call.get("status") != "ok":
         sample.update(
             {
@@ -2366,6 +2485,10 @@ def run_part2_ab_test(
         "created_at": utc_now(),
         "sample_count_per_variant": PART2_SAMPLE_COUNT,
         "variants": PART_2_VARIANTS,
+        "comparison_note": (
+            "A and C intentionally share EvidencePacket construction but serve different "
+            "comparison axes: A/B isolates negative_facts; C/D compares EvidencePacket vs raw-log baseline."
+        ),
         "real_llm_calls_expected": len(selected) * len(PART_2_VARIANTS) * PART2_SAMPLE_COUNT,
         "samples": [],
         "scenario_contexts": {},
@@ -2862,6 +2985,203 @@ def run_failure_path_tests() -> dict[str, Any]:
     }
 
 
+def _write_negative_fact_fixture(worktree_path: Path, scenario: ErrorScenario) -> None:
+    """Create a tiny source tree that contains the scenario mutation target."""
+
+    if scenario.error_type == "cannot_find_header":
+        (worktree_path / "CMakeLists.txt").write_text(
+            "INCLUDE_DIRECTORIES(\n"
+            "  ${CMAKE_SOURCE_DIR}/include\n"
+            "  ${CMAKE_SOURCE_DIR}/src/parser/include\n"
+            ")\n",
+            encoding="utf-8",
+        )
+        return
+    if scenario.error_type == "undefined_reference":
+        tool_dir = worktree_path / "tool"
+        tool_dir.mkdir(parents=True, exist_ok=True)
+        (tool_dir / "CMakeLists.txt").write_text(
+            "target_link_libraries(${PKG_DB_CREATOR}\n"
+            "  ${TARGET_LIB_PKGMGR_PARSER}\n"
+            ")\n",
+            encoding="utf-8",
+        )
+        return
+    if scenario.error_type == "unknown_type_name":
+        include_dir = worktree_path / "include"
+        src_dir = worktree_path / "src"
+        include_dir.mkdir(parents=True, exist_ok=True)
+        src_dir.mkdir(parents=True, exist_ok=True)
+        (include_dir / "pkgmgrinfo_type.h").write_text(
+            "typedef void *pkgmgrinfo_appinfo_h;\n",
+            encoding="utf-8",
+        )
+        return
+    raise ValueError(f"unsupported negative-fact fixture scenario: {scenario.scenario_id}")
+
+
+def _parsed_failure_for_negative_fact_test(scenario: ErrorScenario, log_path: Path) -> ParsedBuildFailure:
+    """Return a parsed failure carrying the scenario symbol for local purity tests."""
+
+    primary = {
+        "message": scenario.expected_primary_hint,
+        "line_no": 1,
+        "source_location": {"file": str(log_path), "line": 1, "column": 1},
+        "symbol": scenario.mutation_target,
+    }
+    if scenario.error_type == "unknown_type_name":
+        primary["type_name"] = "pkgmgrinfo_appinfo_h"
+    if scenario.error_type == "undefined_reference":
+        primary["undefined_symbol"] = "pkgmgr_parser_create_and_initialize_db"
+    if scenario.error_type == "cannot_find_header":
+        primary["missing_header"] = "pkgmgr_parser_db.h"
+    return ParsedBuildFailure(
+        parser_name="negative_fact_purity_mock",
+        log_path=log_path,
+        parsed_error_count=1,
+        primary_candidate=primary,
+        raw_result={"parser": "negative_fact_purity_mock"},
+    )
+
+
+def _all_string_values(value: Any) -> list[str]:
+    """Collect nested string values for negative_facts purity scanning."""
+
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        strings: list[str] = []
+        for nested in value.values():
+            strings.extend(_all_string_values(nested))
+        return strings
+    if isinstance(value, list):
+        strings = []
+        for nested in value:
+            strings.extend(_all_string_values(nested))
+        return strings
+    return []
+
+
+def validate_negative_facts_purity(facts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return purity violations for negative_facts."""
+
+    violations: list[dict[str, Any]] = []
+    for index, fact in enumerate(facts):
+        missing = sorted(NEGATIVE_FACT_REQUIRED_FIELDS - set(fact))
+        if missing:
+            violations.append({"index": index, "type": "missing_required_fields", "fields": missing})
+        result = fact.get("result")
+        if result not in NEGATIVE_FACT_ALLOWED_RESULTS:
+            violations.append({"index": index, "type": "invalid_result", "result": result})
+        joined = "\n".join(_all_string_values(fact)).lower()
+        for phrase in NEGATIVE_FACT_FORBIDDEN_PHRASES:
+            if phrase in joined:
+                violations.append({"index": index, "type": "forbidden_phrase", "phrase": phrase})
+    return violations
+
+
+def _test_evidence_with_negative_facts(facts: list[dict[str, Any]]) -> EvidenceCollectionResult:
+    """Create a small EvidencePacket object for prompt-purity checks."""
+
+    packet = {
+        "schema": "evidence_packet.v1.spike_A",
+        "evidence_id": "EP-S0-A-negative-facts-purity",
+        "task_id": "S0-A-Part2-purity",
+        "trigger": {"type": "compile_error"},
+        "facts": {"mock": True},
+        "negative_facts": facts,
+        "log_excerpt": [],
+        "collection_metadata": {},
+    }
+    refresh_packet_token_metadata(packet)
+    return EvidenceCollectionResult(
+        packet=packet,
+        raw_data_status={"status": "allowed"},
+        clangd_facts={},
+        degraded_reasons=[],
+    )
+
+
+def _prompt_payload_without_negative_facts(prompt: str) -> dict[str, Any]:
+    """Decode a Part 2 JSON prompt and remove only evidence_packet.negative_facts."""
+
+    payload = json.loads(prompt)
+    packet = payload.get("evidence_packet")
+    if isinstance(packet, dict):
+        packet.pop("negative_facts", None)
+    return payload
+
+
+def test_negative_facts_purity() -> dict[str, Any]:
+    """Validate negative_facts semantics and Part 2 prompt purity."""
+
+    import tempfile
+
+    gate = SideEffectGate(enabled=True, reason="test_negative_facts_purity local fixtures")
+    scenario_facts: dict[str, list[dict[str, Any]]] = {}
+    violations: list[dict[str, Any]] = []
+    parsed_by_scenario: dict[str, ParsedBuildFailure] = {}
+
+    for scenario in ERROR_SCENARIOS.values():
+        with tempfile.TemporaryDirectory(prefix=f"s0a_negative_facts_{scenario.scenario_id}_") as tmp:
+            worktree_path = Path(tmp)
+            _write_negative_fact_fixture(worktree_path, scenario)
+            apply_error_mutation(worktree_path, scenario, gate)
+            parsed_failure = _parsed_failure_for_negative_fact_test(
+                scenario,
+                worktree_path / "negative_fact_purity.log",
+            )
+            parsed_by_scenario[scenario.scenario_id] = parsed_failure
+            facts = collect_negative_facts(scenario, parsed_failure, worktree_path)
+            scenario_facts[scenario.scenario_id] = facts
+            for violation in validate_negative_facts_purity(facts):
+                violations.append({"scenario_id": scenario.scenario_id, **violation})
+
+    first_scenario = next(iter(ERROR_SCENARIOS.values()))
+    first_parsed = parsed_by_scenario[first_scenario.scenario_id]
+    evidence = _test_evidence_with_negative_facts(scenario_facts[first_scenario.scenario_id])
+    raw_log = TMP_ROOT / "negative_facts_purity_raw.log"
+    raw_log.parent.mkdir(parents=True, exist_ok=True)
+    raw_log.write_text("mock raw build log for prompt purity test\n", encoding="utf-8")
+
+    prompts: dict[str, str] = {}
+    system_prompts: dict[str, str] = {}
+    prompt_metadata: dict[str, dict[str, Any]] = {}
+    for variant_id, config in PART_2_VARIANTS.items():
+        system, prompt, metadata = build_variant_prompt(
+            first_scenario,
+            first_parsed,
+            config,
+            evidence=evidence,
+            raw_log_path=raw_log,
+            sample_index=1,
+        )
+        system_prompts[variant_id] = system
+        prompts[variant_id] = prompt
+        prompt_metadata[variant_id] = metadata
+
+    system_prompt_byte_identical = len(set(system_prompts.values())) == 1
+    if not system_prompt_byte_identical:
+        violations.append({"type": "system_prompt_not_byte_identical"})
+
+    a_without_negative = _prompt_payload_without_negative_facts(prompts["A"])
+    b_without_negative = _prompt_payload_without_negative_facts(prompts["B"])
+    ab_diff_only_negative_facts = a_without_negative == b_without_negative
+    if not ab_diff_only_negative_facts:
+        violations.append({"type": "ab_prompt_diff_not_limited_to_negative_facts"})
+
+    return {
+        "test": "test_negative_facts_purity",
+        "status": "PASS" if not violations else "FAIL",
+        "scenario_facts": scenario_facts,
+        "system_prompt_byte_identical": system_prompt_byte_identical,
+        "ab_prompt_diff_only_negative_facts": ab_diff_only_negative_facts,
+        "system_prompts": system_prompts,
+        "prompt_metadata": prompt_metadata,
+        "violations": violations,
+    }
+
+
 def describe_framework() -> dict[str, Any]:
     """Return a side-effect-free framework summary for PM review."""
 
@@ -2932,6 +3252,11 @@ def describe_framework() -> dict[str, Any]:
                 "status": "implemented_run_with_--mode run-failure-path-tests",
                 "expected": "non-git source path raises contract_violation",
             },
+            {
+                "test": "test_negative_facts_purity",
+                "status": "implemented_run_with_--mode test-negative-facts-purity",
+                "expected": "negative_facts contain tool-derived facts only; A/B differ only by negative_facts; system prompt is byte-identical",
+            },
         ],
     }
 
@@ -2951,6 +3276,7 @@ def main(argv: list[str] | None = None) -> int:
             "test-bounded",
             "test-uncommitted-changes",
             "test-non-git-repo",
+            "test-negative-facts-purity",
             "run-failure-path-tests",
             "run-part2-ab-test",
             "self-test-clangd",
@@ -2995,6 +3321,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.mode == "test-non-git-repo":
         result = test_non_git_repo()
+        print(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True, default=str))
+        return 0 if result.get("status") == "PASS" else 1
+
+    if args.mode == "test-negative-facts-purity":
+        result = test_negative_facts_purity()
         print(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True, default=str))
         return 0 if result.get("status") == "PASS" else 1
 
