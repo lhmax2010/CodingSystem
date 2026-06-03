@@ -2413,6 +2413,176 @@ def run_part2_sample(
             pass
 
 
+def part2_sample_failure(
+    scenario: ErrorScenario,
+    variant_config: dict[str, Any],
+    sample_index: int,
+    exc: Exception,
+    *,
+    status: str = "sample_exception",
+) -> dict[str, Any]:
+    """Create a persisted sample record when one sample fails before normal completion."""
+
+    scenario_label = scenario.scenario_id.split("_", 1)[0]
+    sample_id = f"part2_{scenario_label}_{variant_config['variant_id']}_sample{sample_index}"
+    return {
+        "sample_id": sample_id,
+        "scenario_id": scenario.scenario_id,
+        "variant_id": variant_config["variant_id"],
+        "variant_name": variant_config["name"],
+        "sample_index": sample_index,
+        "status": status,
+        "error": {"type": type(exc).__name__, "message": str(exc)},
+        "patch_text": "",
+        "apply": {
+            "strict": {"status": "SKIPPED", "reason": status},
+            "fuzzy": {"status": "SKIPPED", "reason": status},
+            "final_applied": "none",
+        },
+        "rebuild": {"status": "N/A", "reason": status},
+    }
+
+
+def part2_sample_from_context_failure(
+    scenario: ErrorScenario,
+    variant_config: dict[str, Any],
+    sample_index: int,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """Create a skipped sample record when scenario context preparation fails."""
+
+    scenario_label = scenario.scenario_id.split("_", 1)[0]
+    sample_id = f"part2_{scenario_label}_{variant_config['variant_id']}_sample{sample_index}"
+    return {
+        "sample_id": sample_id,
+        "scenario_id": scenario.scenario_id,
+        "variant_id": variant_config["variant_id"],
+        "variant_name": variant_config["name"],
+        "sample_index": sample_index,
+        "status": "scenario_context_failed",
+        "context_status": context.get("status"),
+        "error": context.get("error"),
+        "patch_text": "",
+        "apply": {
+            "strict": {"status": "SKIPPED", "reason": "scenario_context_failed"},
+            "fuzzy": {"status": "SKIPPED", "reason": "scenario_context_failed"},
+            "final_applied": "none",
+        },
+        "rebuild": {"status": "N/A", "reason": "scenario_context_failed"},
+    }
+
+
+def persist_part2_outputs(results: dict[str, Any]) -> None:
+    """Persist Part 2 JSON and review form after each sample."""
+
+    PART2_RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PART2_RESULTS_PATH.write_text(
+        json.dumps(safe_asdict(results), ensure_ascii=False, indent=2, sort_keys=True, default=str) + "\n",
+        encoding="utf-8",
+    )
+    PART2_REVIEW_FORM_PATH.write_text(render_part2_review_form(results), encoding="utf-8")
+
+
+def part2_progress_line(index: int, total: int, sample: dict[str, Any]) -> str:
+    """Return one PM-visible progress line for a completed sample."""
+
+    scenario_label = str(sample.get("scenario_id", "unknown")).split("_", 1)[0]
+    variant = sample.get("variant_id", "unknown")
+    sample_index = sample.get("sample_index", "?")
+    apply_result = sample.get("apply") or {}
+    rebuild = sample.get("rebuild") or {}
+    strict = (apply_result.get("strict") or {}).get("status", "N/A")
+    fuzzy = (apply_result.get("fuzzy") or {}).get("status", "N/A")
+    rebuild_status = rebuild.get("status", "N/A")
+    return (
+        f"[{index}/{total}] {scenario_label} variant-{variant} sample-{sample_index}: "
+        f"strict={strict} fuzzy={fuzzy} rebuild={rebuild_status} status={sample.get('status')}"
+    )
+
+
+def _sample_timed_out(sample: dict[str, Any]) -> bool:
+    errors = ((sample.get("llm_call") or {}).get("errors")) or []
+    return any(_is_timeout_error(Exception(error.get("message", ""))) for error in errors)
+
+
+def _sample_auth_failed(sample: dict[str, Any]) -> bool:
+    errors = ((sample.get("llm_call") or {}).get("errors")) or []
+    text = "\n".join(error.get("message", "") for error in errors).lower()
+    return any(marker in text for marker in ("401", "403", "unauthorized", "forbidden"))
+
+
+def _sample_disk_full(sample: dict[str, Any]) -> bool:
+    text = json.dumps(sample.get("error") or {}, ensure_ascii=False).lower()
+    return "no space left" in text or "disk full" in text
+
+
+def summarize_part2_results(results: dict[str, Any]) -> dict[str, Any]:
+    """Compute automatic apply/rebuild statistics. Semantic accuracy is PM-reviewed later."""
+
+    by_variant: dict[str, dict[str, Any]] = {}
+    for variant_id in PART_2_VARIANTS:
+        by_variant[variant_id] = {
+            "samples": 0,
+            "strict_pass": 0,
+            "fuzzy_pass": 0,
+            "rebuild_pass": 0,
+            "timeout": 0,
+            "llm_failed": 0,
+            "sample_exception": 0,
+        }
+
+    for sample in results.get("samples", []):
+        variant_id = str(sample.get("variant_id"))
+        stats = by_variant.setdefault(
+            variant_id,
+            {
+                "samples": 0,
+                "strict_pass": 0,
+                "fuzzy_pass": 0,
+                "rebuild_pass": 0,
+                "timeout": 0,
+                "llm_failed": 0,
+                "sample_exception": 0,
+            },
+        )
+        stats["samples"] += 1
+        apply_result = sample.get("apply") or {}
+        if (apply_result.get("strict") or {}).get("status") == "PASS":
+            stats["strict_pass"] += 1
+        if (apply_result.get("fuzzy") or {}).get("status") == "PASS":
+            stats["fuzzy_pass"] += 1
+        if (sample.get("rebuild") or {}).get("status") == "PASS":
+            stats["rebuild_pass"] += 1
+        if sample.get("status") == "llm_failed":
+            stats["llm_failed"] += 1
+        if sample.get("status") == "sample_exception":
+            stats["sample_exception"] += 1
+        if _sample_timed_out(sample):
+            stats["timeout"] += 1
+
+    for stats in by_variant.values():
+        total = max(1, int(stats["samples"]))
+        stats["strict_pass_rate"] = round(stats["strict_pass"] / total, 4)
+        stats["fuzzy_pass_rate"] = round(stats["fuzzy_pass"] / total, 4)
+        stats["rebuild_pass_rate"] = round(stats["rebuild_pass"] / total, 4)
+
+    return {
+        "by_variant": by_variant,
+        "comparisons": {
+            "A_vs_B": {
+                "strict_pass": [by_variant.get("A", {}).get("strict_pass"), by_variant.get("B", {}).get("strict_pass")],
+                "fuzzy_pass": [by_variant.get("A", {}).get("fuzzy_pass"), by_variant.get("B", {}).get("fuzzy_pass")],
+                "rebuild_pass": [by_variant.get("A", {}).get("rebuild_pass"), by_variant.get("B", {}).get("rebuild_pass")],
+            },
+            "C_vs_D": {
+                "strict_pass": [by_variant.get("C", {}).get("strict_pass"), by_variant.get("D", {}).get("strict_pass")],
+                "fuzzy_pass": [by_variant.get("C", {}).get("fuzzy_pass"), by_variant.get("D", {}).get("fuzzy_pass")],
+                "rebuild_pass": [by_variant.get("C", {}).get("rebuild_pass"), by_variant.get("D", {}).get("rebuild_pass")],
+            },
+        },
+    }
+
+
 def render_part2_review_form(results: dict[str, Any]) -> str:
     """Render PM-facing review form with fixed per-sample fields."""
 
@@ -2435,6 +2605,7 @@ def render_part2_review_form(results: dict[str, Any]) -> str:
         rebuild = sample.get("rebuild") or {}
         llm_result = ((sample.get("llm_call") or {}).get("llm_result") or {})
         token_usage = llm_result.get("token_usage") or {}
+        prompt_metadata = sample.get("prompt_metadata") or {}
         strict_msg = ((strict.get("result") or {}).get("tail_excerpt")) or strict.get("reason") or ""
         fuzzy_msg = ((fuzzy.get("result") or {}).get("tail_excerpt")) or fuzzy.get("reason") or ""
         lines.extend(
@@ -2458,6 +2629,13 @@ def render_part2_review_form(results: dict[str, Any]) -> str:
                 f"- tokens (in/out/total): {token_usage.get('in', 'N/A')}/{token_usage.get('out', 'N/A')}/{token_usage.get('total', 'N/A')}",
                 f"- finish_reason: {llm_result.get('finish_reason', 'N/A')}",
                 "",
+                "**Prompt metadata**:",
+                f"- prompt_chars: {prompt_metadata.get('prompt_chars', 'N/A')}",
+                f"- estimated_prompt_tokens: {prompt_metadata.get('estimated_prompt_tokens', 'N/A')}",
+                f"- evidence_packet_tokens: {prompt_metadata.get('evidence_packet_tokens', 'N/A')}",
+                f"- raw_log_chars: {prompt_metadata.get('raw_log_chars', 'N/A')}",
+                f"- spike_budget_overflow_observed: {prompt_metadata.get('spike_budget_overflow_observed', 'N/A')}",
+                "",
                 "**PM semantic eval**: ___ (correct / acceptable / wrong)",
                 "**PM 备注**: ___",
                 "",
@@ -2477,8 +2655,12 @@ def run_part2_ab_test(
     """Run S0-A Part 2 A/B experiment. This is side-effect gated."""
 
     gate.require("S0-A Part 2 A/B test")
+    started_at = time.perf_counter()
     run_id = datetime.now().strftime("part2_%Y%m%d_%H%M%S_%f")
     selected = scenarios or ERROR_SCENARIOS
+    total_samples = len(selected) * len(PART_2_VARIANTS) * PART2_SAMPLE_COUNT
+    completed_samples = 0
+    consecutive_system_failures = 0
     results: dict[str, Any] = {
         "schema": "s0_a_part2_results.v1",
         "run_id": run_id,
@@ -2500,50 +2682,77 @@ def run_part2_ab_test(
 
     try:
         for scenario in selected.values():
-            context = prepare_part2_scenario_context(scenario, modules, gate, run_id=run_id)
+            try:
+                context = prepare_part2_scenario_context(scenario, modules, gate, run_id=run_id)
+            except Exception as exc:
+                context = {
+                    "scenario": safe_asdict(scenario),
+                    "status": "context_exception",
+                    "error": {"type": type(exc).__name__, "message": str(exc)},
+                }
             results["scenario_contexts"][scenario.scenario_id] = {
                 key: value for key, value in context.items()
                 if key not in {"evidence", "_parsed_failure_obj"}
             }
             if context.get("status") != "ok":
+                for variant_config in PART_2_VARIANTS.values():
+                    for sample_index in range(1, PART2_SAMPLE_COUNT + 1):
+                        sample = part2_sample_from_context_failure(
+                            scenario,
+                            variant_config,
+                            sample_index,
+                            context,
+                        )
+                        results["samples"].append(sample)
+                        completed_samples += 1
+                        results["summary"] = summarize_part2_results(results)
+                        persist_part2_outputs(results)
+                        print(part2_progress_line(completed_samples, total_samples, sample), flush=True)
                 continue
             evidence = context["evidence"]
             parsed_failure = context["_parsed_failure_obj"]
             raw_log_path = Path(context["fail_log"])
             for variant_config in PART_2_VARIANTS.values():
                 for sample_index in range(1, PART2_SAMPLE_COUNT + 1):
-                    sample = run_part2_sample(
-                        scenario,
-                        parsed_failure,
-                        evidence,
-                        variant_config,
-                        sample_index,
-                        modules,
-                        gate,
-                        run_id=run_id,
-                        raw_log_path=raw_log_path,
-                    )
+                    try:
+                        sample = run_part2_sample(
+                            scenario,
+                            parsed_failure,
+                            evidence,
+                            variant_config,
+                            sample_index,
+                            modules,
+                            gate,
+                            run_id=run_id,
+                            raw_log_path=raw_log_path,
+                        )
+                    except Exception as exc:
+                        sample = part2_sample_failure(scenario, variant_config, sample_index, exc)
                     results["samples"].append(sample)
-                    PART2_RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
-                    PART2_RESULTS_PATH.write_text(
-                        json.dumps(safe_asdict(results), ensure_ascii=False, indent=2, sort_keys=True, default=str) + "\n",
-                        encoding="utf-8",
-                    )
-                    PART2_REVIEW_FORM_PATH.write_text(render_part2_review_form(results), encoding="utf-8")
+                    completed_samples += 1
+                    results["summary"] = summarize_part2_results(results)
+                    persist_part2_outputs(results)
+                    print(part2_progress_line(completed_samples, total_samples, sample), flush=True)
+
+                    if _sample_disk_full(sample):
+                        raise RuntimeError("systemic_failure: disk full observed in sample")
+                    if _sample_auth_failed(sample) or sample.get("status") == "sample_exception":
+                        consecutive_system_failures += 1
+                    else:
+                        consecutive_system_failures = 0
+                    if consecutive_system_failures >= 5:
+                        raise RuntimeError("systemic_failure: 5 consecutive auth/sample exceptions")
     finally:
         cleanup_clangd_client()
 
     results["status"] = "complete"
+    results["elapsed_sec"] = round(time.perf_counter() - started_at, 3)
     results["real_llm_calls_observed"] = sum(
         1 for sample in results["samples"]
         if (sample.get("llm_call") or {}).get("status") == "ok"
     )
-    PART2_RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    PART2_RESULTS_PATH.write_text(
-        json.dumps(safe_asdict(results), ensure_ascii=False, indent=2, sort_keys=True, default=str) + "\n",
-        encoding="utf-8",
-    )
-    PART2_REVIEW_FORM_PATH.write_text(render_part2_review_form(results), encoding="utf-8")
+    results["summary"] = summarize_part2_results(results)
+    persist_part2_outputs(results)
     return results
 
 
