@@ -40,6 +40,9 @@ S0A_TMP_ROOT = TMP_ROOT / "s0_a_repair_loop"
 WORKTREE_ROOT = S0A_TMP_ROOT / "worktrees"
 TRACE_ROOT = S0A_TMP_ROOT / "traces"
 PATCH_ROOT = S0A_TMP_ROOT / "patches"
+PART2_RESULTS_PATH = S0A_TMP_ROOT / "part2_results.json"
+PART2_REVIEW_FORM_PATH = S0A_TMP_ROOT / "part2_review_form.md"
+PART2_PATCH_ROOT = S0A_TMP_ROOT / "part2_patches"
 
 GBS_CONF = Path("/home/linhao/Toolchain/gbs_llvm_coding.conf")
 GBS_ROOT = Path("/home/linhao/GBS-ROOT-TIZEN-LLVM/local/BUILD-ROOTS/scratch.x86_64.0")
@@ -58,6 +61,9 @@ MAX_CLANGD_QUERY_SEC = 10
 MAX_CLANGD_SELF_TEST_SEC = 30
 CLANGD_INDEX_DRAIN_SEC = 8
 DEFAULT_CLANGD = Path("/usr/bin/clangd")
+PART2_SAMPLE_COUNT = 3
+PART2_LLM_TIMEOUT_RETRIES = 1
+PART2_RAW_LOG_CHAR_LIMIT = 12000
 _CLANGD_CACHE: dict[str, Any] = {}
 
 SPIKE_03_PATH = SPIKE_REPORTS_DATA / "spike_03_clangd_lsp_eval.py"
@@ -223,6 +229,43 @@ ERROR_SCENARIOS: dict[str, ErrorScenario] = {
         expected_primary_hint="public typedef drift cascades through pkgmgr-info and consumers",
         notes="Delete pkgmgrinfo_appinfo_h typedef; reused later for S0-C.",
     ),
+}
+
+
+PART_2_VARIANTS: dict[str, dict[str, Any]] = {
+    "A": {
+        "variant_id": "A",
+        "name": "with_negative_facts",
+        "description": "Full EvidencePacket, including negative_facts.",
+        "input_strategy": "evidence_packet",
+        "include_negative_facts": True,
+        "include_raw_log": False,
+    },
+    "B": {
+        "variant_id": "B",
+        "name": "without_negative_facts",
+        "description": "EvidencePacket with negative_facts removed.",
+        "input_strategy": "evidence_packet",
+        "include_negative_facts": False,
+        "include_raw_log": False,
+    },
+    "C": {
+        "variant_id": "C",
+        "name": "evidence_packet_baseline",
+        "description": "EvidencePacket baseline for comparison with raw-log workflow.",
+        "input_strategy": "evidence_packet",
+        "include_negative_facts": True,
+        "include_raw_log": False,
+    },
+    "D": {
+        "variant_id": "D",
+        "name": "raw_log_baseline",
+        "description": "Raw build log baseline, local-only, truncated for token budget comparison.",
+        "input_strategy": "raw_log",
+        "include_negative_facts": False,
+        "include_raw_log": True,
+        "raw_log_char_limit": PART2_RAW_LOG_CHAR_LIMIT,
+    },
 }
 
 
@@ -1294,6 +1337,88 @@ def collect_evidence_packet(
     return EvidenceCollectionResult(packet=packet, raw_data_status=raw_status, clangd_facts=clangd_facts, degraded_reasons=degraded)
 
 
+def collect_negative_facts(
+    scenario: ErrorScenario,
+    parsed_failure: ParsedBuildFailure,
+    evidence: EvidenceCollectionResult | None = None,
+) -> list[dict[str, Any]]:
+    """Collect prompt-safe negative facts for Part 2 variant A/C.
+
+    These facts tell the LLM what *not* to infer. They are bounded metadata,
+    not raw logs, and they intentionally mirror the EvidencePacket contract
+    rather than introducing a new evidence source.
+    """
+
+    primary = parsed_failure.primary_candidate or {}
+    facts = [
+        {
+            "check": "raw build log included in prompt",
+            "result": "not_present",
+            "confidence": "high",
+            "scope": "prompt_boundary",
+            "implication": "Only bounded log_excerpt/evidence facts should drive the patch.",
+        },
+        {
+            "check": "repair scope",
+            "result": "package_worktree_only",
+            "confidence": "high",
+            "scope": scenario.package,
+            "implication": "Patch must edit only files in the mutated package worktree.",
+        },
+        {
+            "check": "diff context",
+            "result": "must_match_existing_source",
+            "confidence": "high",
+            "scope": "patch_generation",
+            "implication": "Do not invent or restructure surrounding code; use minimal exact-context hunks.",
+        },
+    ]
+    if scenario.error_type == "undefined_reference":
+        facts.append(
+            {
+                "check": "undefined_reference root cause",
+                "result": "not_namespace_or_header_lookup",
+                "confidence": "medium",
+                "scope": primary.get("symbol") or primary.get("undefined_symbol"),
+                "implication": "Prefer link dependency evidence over guessing namespace/type fixes.",
+            }
+        )
+    if scenario.error_type == "cannot_find_header":
+        facts.append(
+            {
+                "check": "header exists",
+                "result": "do_not_create_new_header",
+                "confidence": "medium",
+                "scope": primary.get("missing_header") or primary.get("header"),
+                "implication": "Prefer include path/build config repair over creating a replacement header.",
+            }
+        )
+    if scenario.error_type == "unknown_type_name":
+        facts.append(
+            {
+                "check": "type drift",
+                "result": "do_not_rename_all_call_sites_without_evidence",
+                "confidence": "medium",
+                "scope": primary.get("type_name") or primary.get("symbol"),
+                "implication": "Prefer restoring the missing public typedef when clangd references show broad usage.",
+            }
+        )
+
+    if evidence is not None:
+        existing = evidence.packet.get("negative_facts") or []
+        merged = existing + facts
+        seen: set[str] = set()
+        unique: list[dict[str, Any]] = []
+        for fact in merged:
+            key = json.dumps(fact, sort_keys=True, ensure_ascii=False)
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(fact)
+        return unique
+    return facts
+
+
 def build_llm_prompt(evidence: EvidenceCollectionResult, attempt_index: int) -> tuple[str, str]:
     """Render the S0-A Part 1 prompt from bounded EvidencePacket data only."""
 
@@ -1313,6 +1438,84 @@ def build_llm_prompt(evidence: EvidenceCollectionResult, attempt_index: int) -> 
         sort_keys=True,
     )
     return system, user
+
+
+def build_variant_prompt(
+    scenario: ErrorScenario,
+    parsed_failure: ParsedBuildFailure,
+    variant_config: dict[str, Any],
+    *,
+    evidence: EvidenceCollectionResult | None = None,
+    raw_log_path: Path | None = None,
+    sample_index: int = 1,
+) -> tuple[str, str, dict[str, Any]]:
+    """Render a Part 2 A/B prompt variant without mutating source evidence."""
+
+    variant_id = variant_config["variant_id"]
+    system = (
+        "You are repairing a Tizen C/C++ package. Return only a unified diff. "
+        "The diff context must match the existing source exactly. Do not "
+        "restructure unrelated code. Do not include explanation outside the diff."
+    )
+    metadata = {
+        "scenario_id": scenario.scenario_id,
+        "variant_id": variant_id,
+        "variant_name": variant_config["name"],
+        "sample_index": sample_index,
+        "input_strategy": variant_config["input_strategy"],
+    }
+
+    if variant_config.get("input_strategy") == "raw_log":
+        if raw_log_path is None:
+            raise ValueError("raw_log_path is required for raw_log variant")
+        limit = int(variant_config.get("raw_log_char_limit", PART2_RAW_LOG_CHAR_LIMIT))
+        raw_log_excerpt = raw_log_path.read_text(errors="replace")[:limit]
+        metadata.update(
+            {
+                "raw_log_path": str(raw_log_path),
+                "raw_log_char_limit": limit,
+                "raw_log_excerpt_chars": len(raw_log_excerpt),
+                "raw_log_policy": "LOCAL_ONLY_EXPERIMENTAL_TRACE; do not commit raw log",
+            }
+        )
+        user_payload = {
+            "instruction": "Generate a minimal unified diff that fixes the compile failure.",
+            "experiment": "S0-A Part 2 raw log baseline",
+            "variant": metadata,
+            "scenario": safe_asdict(scenario),
+            "primary_candidate": parsed_failure.primary_candidate,
+            "max_patch_lines": MAX_PATCH_LINES,
+            "raw_log_excerpt": raw_log_excerpt,
+            "raw_log_warning": (
+                "This raw-log prompt intentionally violates the normal EvidencePacket boundary "
+                "only as a local S0-A Part 2 baseline. Do not persist raw log in repo artifacts."
+            ),
+        }
+        return system, json.dumps(user_payload, ensure_ascii=False, indent=2, sort_keys=True), metadata
+
+    if evidence is None:
+        raise ValueError("evidence is required for EvidencePacket variants")
+    packet = json.loads(json.dumps(safe_asdict(evidence.packet), ensure_ascii=False))
+    if variant_config.get("include_negative_facts"):
+        packet["negative_facts"] = collect_negative_facts(scenario, parsed_failure, evidence)
+    else:
+        packet.pop("negative_facts", None)
+
+    metadata.update(
+        {
+            "include_negative_facts": bool(variant_config.get("include_negative_facts")),
+            "evidence_id": packet.get("evidence_id"),
+        }
+    )
+    user_payload = {
+        "instruction": "Generate a minimal unified diff that fixes the compile failure.",
+        "experiment": "S0-A Part 2 EvidencePacket A/B",
+        "variant": metadata,
+        "scenario": safe_asdict(scenario),
+        "max_patch_lines": MAX_PATCH_LINES,
+        "evidence_packet": packet,
+    }
+    return system, json.dumps(user_payload, ensure_ascii=False, indent=2, sort_keys=True), metadata
 
 
 def call_llm_for_patch(
@@ -1418,6 +1621,91 @@ def apply_patch_to_worktree(patch_text: str, worktree_path: Path, gate: SideEffe
         duration_sec=time.perf_counter() - started,
         tail_excerpt="\n".join(proc.stdout.splitlines()[-50:]),
     )
+
+
+def _run_git_apply(
+    patch_text: str,
+    worktree_path: Path,
+    gate: SideEffectGate,
+    *,
+    mode: str,
+    extra_args: list[str],
+    patch_file: Path,
+) -> CommandResult:
+    """Run one git apply command for Part 2 strict/fuzzy comparison."""
+
+    gate.require(f"git apply patch ({mode})")
+    patch_file.parent.mkdir(parents=True, exist_ok=True)
+    patch_file.write_text(patch_text, encoding="utf-8")
+    command = ["git", "apply", *extra_args, str(patch_file)]
+    started = time.perf_counter()
+    proc = subprocess.run(
+        command,
+        cwd=worktree_path,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    return CommandResult(
+        command=command,
+        cwd=worktree_path,
+        exit_code=proc.returncode,
+        duration_sec=time.perf_counter() - started,
+        tail_excerpt="\n".join(proc.stdout.splitlines()[-50:]),
+    )
+
+
+def dual_apply_patch(
+    patch_text: str,
+    worktree_path: Path,
+    gate: SideEffectGate,
+    *,
+    sample_id: str,
+) -> dict[str, Any]:
+    """Try strict apply first, then fuzzy three-way apply if strict fails."""
+
+    validation = validate_patch(patch_text, worktree_path)
+    if not validation.accepted:
+        return {
+            "validation": safe_asdict(validation),
+            "strict": {"status": "SKIPPED", "reason": validation.reason},
+            "fuzzy": {"status": "SKIPPED", "reason": "patch_validation_failed"},
+            "final_applied": "none",
+        }
+
+    strict_result = _run_git_apply(
+        patch_text,
+        worktree_path,
+        gate,
+        mode="strict",
+        extra_args=["--index"],
+        patch_file=PART2_PATCH_ROOT / f"{sample_id}.strict.patch",
+    )
+    strict_status = "PASS" if strict_result.exit_code == 0 else "FAIL"
+    if strict_result.exit_code == 0:
+        return {
+            "validation": safe_asdict(validation),
+            "strict": {"status": strict_status, "result": safe_asdict(strict_result)},
+            "fuzzy": {"status": "SKIPPED", "reason": "strict_apply_passed"},
+            "final_applied": "strict",
+        }
+
+    fuzzy_result = _run_git_apply(
+        patch_text,
+        worktree_path,
+        gate,
+        mode="fuzzy",
+        extra_args=["--3way", "--index"],
+        patch_file=PART2_PATCH_ROOT / f"{sample_id}.fuzzy.patch",
+    )
+    fuzzy_status = "PASS" if fuzzy_result.exit_code == 0 else "FAIL"
+    return {
+        "validation": safe_asdict(validation),
+        "strict": {"status": strict_status, "result": safe_asdict(strict_result)},
+        "fuzzy": {"status": fuzzy_status, "result": safe_asdict(fuzzy_result)},
+        "final_applied": "fuzzy" if fuzzy_result.exit_code == 0 else "none",
+    }
 
 
 def make_failure_envelope(
@@ -1771,6 +2059,369 @@ def run_repair_loop_for_scenario(
             failure_class=result.failure_envelope.get("failure_class") if result.failure_envelope else None,
         )
         write_trace(trace_path, result)
+
+
+def _is_timeout_error(exc: Exception) -> bool:
+    """Return true for adapter/network timeout messages."""
+
+    lowered = str(exc).lower()
+    return "timeout" in lowered or "timed out" in lowered or "read timed out" in lowered
+
+
+def call_llm_for_part2_variant(
+    scenario: ErrorScenario,
+    parsed_failure: ParsedBuildFailure,
+    variant_config: dict[str, Any],
+    sample_index: int,
+    modules: dict[str, ModuleType],
+    gate: SideEffectGate,
+    *,
+    evidence: EvidenceCollectionResult | None,
+    raw_log_path: Path,
+) -> dict[str, Any]:
+    """Call the real LLM once for a Part 2 variant, retrying timeout once."""
+
+    gate.require("Part 2 LLM call")
+    adapter = modules["llm_adapter"].get_adapter(str(LLM_CONFIG_PATH))
+    system, prompt, prompt_metadata = build_variant_prompt(
+        scenario,
+        parsed_failure,
+        variant_config,
+        evidence=evidence,
+        raw_log_path=raw_log_path,
+        sample_index=sample_index,
+    )
+    llm_adapter_error = getattr(modules.get("llm_adapter"), "LLMAdapterError", Exception)
+    scenario_label = scenario.scenario_id.split("_", 1)[0]
+    sample_id = f"part2_{scenario_label}_{variant_config['variant_id']}_sample{sample_index}"
+    errors: list[dict[str, str]] = []
+    max_calls = 1 + PART2_LLM_TIMEOUT_RETRIES
+    for call_index in range(1, max_calls + 1):
+        try:
+            response = adapter.call(
+                prompt,
+                system=system,
+                scenario_id=f"{sample_id}_call{call_index}",
+            )
+            return {
+                "status": "ok",
+                "sample_id": sample_id,
+                "call_index": call_index,
+                "auto_retry_count": call_index - 1,
+                "prompt_metadata": prompt_metadata,
+                "llm_result": safe_asdict(
+                    LLMCallResult(
+                        scenario_id=sample_id,
+                        attempt_index=call_index,
+                        provider=response.provider,
+                        model=response.model,
+                        request_id=response.request_id,
+                        content=response.content,
+                        token_usage=response.token_usage,
+                        duration_ms=response.duration_ms,
+                        finish_reason=response.finish_reason,
+                    )
+                ),
+            }
+        except llm_adapter_error as exc:
+            errors.append({"type": type(exc).__name__, "message": str(exc)})
+            if call_index < max_calls and _is_timeout_error(exc):
+                continue
+            break
+        except Exception as exc:
+            errors.append({"type": type(exc).__name__, "message": str(exc)})
+            break
+    return {
+        "status": "llm_failed",
+        "sample_id": sample_id,
+        "auto_retry_count": len(errors) - 1 if errors else 0,
+        "prompt_metadata": prompt_metadata,
+        "errors": errors,
+    }
+
+
+def prepare_part2_scenario_context(
+    scenario: ErrorScenario,
+    modules: dict[str, ModuleType],
+    gate: SideEffectGate,
+    *,
+    run_id: str,
+) -> dict[str, Any]:
+    """Create one failing build + EvidencePacket context for all Part 2 samples."""
+
+    worktree_path = create_isolated_worktree(scenario, f"{run_id}_context", gate)
+    fail_log = TRACE_ROOT / run_id / scenario.scenario_id / "part2_initial_build_fail.log"
+    context: dict[str, Any] = {
+        "scenario": safe_asdict(scenario),
+        "worktree_path": str(worktree_path),
+        "fail_log": str(fail_log),
+        "status": "not_started",
+    }
+    try:
+        apply_error_mutation(worktree_path, scenario, gate)
+        build_result = run_gbs_build(worktree_path, scenario, fail_log, gate)
+        parsed_failure = parse_build_log_extended(fail_log, modules)
+        context.update(
+            {
+                "build_result": safe_asdict(build_result),
+                "parsed_failure": safe_asdict(parsed_failure),
+            }
+        )
+        if build_result.exit_code == 0:
+            context.update({"status": "scenario_did_not_fail", "error": "mutation unexpectedly built successfully"})
+            return context
+        if parsed_failure.parsed_error_count == 0 or not parsed_failure.primary_candidate:
+            context.update({"status": "parse_failed", "error": "no primary error parsed"})
+            return context
+        evidence = collect_evidence_packet(scenario, worktree_path, parsed_failure, modules, gate)
+        context.update(
+            {
+                "status": "ok",
+                "evidence": evidence,
+                "evidence_summary": {
+                    "evidence_id": evidence.packet.get("evidence_id"),
+                    "raw_data_status": evidence.raw_data_status,
+                    "reference_count": evidence.clangd_facts.get("reference_count"),
+                    "definition": evidence.clangd_facts.get("definition"),
+                    "estimated_tokens": evidence.packet.get("metadata", {}).get("estimated_tokens"),
+                },
+                "_parsed_failure_obj": parsed_failure,
+            }
+        )
+        return context
+    finally:
+        try:
+            cleanup_worktree(worktree_path, gate)
+        except Exception:
+            pass
+
+
+def warning_count_from_log(log_path: Path | None) -> int | None:
+    """Count warning lines in a build log if it exists."""
+
+    if log_path is None or not log_path.exists():
+        return None
+    count = 0
+    with log_path.open(errors="replace") as stream:
+        for line in stream:
+            if "warning:" in line.lower():
+                count += 1
+    return count
+
+
+def run_part2_sample(
+    scenario: ErrorScenario,
+    parsed_failure: ParsedBuildFailure,
+    evidence: EvidenceCollectionResult,
+    variant_config: dict[str, Any],
+    sample_index: int,
+    modules: dict[str, ModuleType],
+    gate: SideEffectGate,
+    *,
+    run_id: str,
+    raw_log_path: Path,
+) -> dict[str, Any]:
+    """Run one Part 2 sample: LLM call, strict/fuzzy apply, optional rebuild."""
+
+    variant_id = variant_config["variant_id"]
+    scenario_label = scenario.scenario_id.split("_", 1)[0]
+    sample_id = f"part2_{scenario_label}_{variant_id}_sample{sample_index}"
+    sample: dict[str, Any] = {
+        "sample_id": sample_id,
+        "scenario_id": scenario.scenario_id,
+        "variant_id": variant_id,
+        "variant_name": variant_config["name"],
+        "sample_index": sample_index,
+        "status": "not_started",
+    }
+    llm_call = call_llm_for_part2_variant(
+        scenario,
+        parsed_failure,
+        variant_config,
+        sample_index,
+        modules,
+        gate,
+        evidence=evidence,
+        raw_log_path=raw_log_path,
+    )
+    sample["llm_call"] = llm_call
+    if llm_call.get("status") != "ok":
+        sample.update(
+            {
+                "status": "llm_failed",
+                "patch_text": "",
+                "apply": {
+                    "strict": {"status": "SKIPPED", "reason": "llm_failed"},
+                    "fuzzy": {"status": "SKIPPED", "reason": "llm_failed"},
+                    "final_applied": "none",
+                },
+                "rebuild": {"status": "N/A", "reason": "llm_failed"},
+            }
+        )
+        return sample
+
+    llm_result = llm_call["llm_result"]
+    patch_text = extract_unified_diff(llm_result.get("content", ""))
+    sample["patch_text"] = patch_text
+    patch_file = PART2_PATCH_ROOT / f"{sample_id}.llm.patch"
+    patch_file.parent.mkdir(parents=True, exist_ok=True)
+    patch_file.write_text(patch_text, encoding="utf-8")
+    sample["patch_file"] = str(patch_file)
+
+    worktree_path = create_isolated_worktree(scenario, f"{run_id}_{variant_id}_sample{sample_index}", gate)
+    try:
+        apply_error_mutation(worktree_path, scenario, gate)
+        apply_result = dual_apply_patch(patch_text, worktree_path, gate, sample_id=sample_id)
+        sample["apply"] = apply_result
+        final_applied = apply_result.get("final_applied")
+        if final_applied in {"strict", "fuzzy"}:
+            rebuild_log = TRACE_ROOT / run_id / scenario.scenario_id / f"{sample_id}_rebuild.log"
+            rebuild_result = run_gbs_build(worktree_path, scenario, rebuild_log, gate, timeout_sec=VERIFY_TIMEOUT_SEC)
+            sample["rebuild"] = {
+                "status": "PASS" if rebuild_result.exit_code == 0 else "FAIL",
+                "result": safe_asdict(rebuild_result),
+                "warning_count": warning_count_from_log(rebuild_log),
+            }
+            sample["status"] = "repair_succeeded" if rebuild_result.exit_code == 0 else "rebuild_failed"
+        else:
+            sample["rebuild"] = {"status": "N/A", "reason": "patch_not_applied"}
+            sample["status"] = "patch_not_applied"
+        return sample
+    finally:
+        try:
+            cleanup_worktree(worktree_path, gate)
+        except Exception:
+            pass
+
+
+def render_part2_review_form(results: dict[str, Any]) -> str:
+    """Render PM-facing review form with fixed per-sample fields."""
+
+    lines = [
+        "# S0-A Part 2 Review Form",
+        "",
+        "PM semantic eval options: correct / acceptable / wrong",
+        "",
+    ]
+    for sample in results.get("samples", []):
+        scenario_label = sample["scenario_id"].split("_", 1)[0]
+        variant_id = sample["variant_id"]
+        sample_index = sample["sample_index"]
+        request_id = ((sample.get("llm_call") or {}).get("llm_result") or {}).get("request_id", "N/A")
+        variant_name = sample.get("variant_name", "")
+        patch_text = sample.get("patch_text") or ""
+        apply_result = sample.get("apply") or {}
+        strict = apply_result.get("strict") or {}
+        fuzzy = apply_result.get("fuzzy") or {}
+        rebuild = sample.get("rebuild") or {}
+        llm_result = ((sample.get("llm_call") or {}).get("llm_result") or {})
+        token_usage = llm_result.get("token_usage") or {}
+        strict_msg = ((strict.get("result") or {}).get("tail_excerpt")) or strict.get("reason") or ""
+        fuzzy_msg = ((fuzzy.get("result") or {}).get("tail_excerpt")) or fuzzy.get("reason") or ""
+        lines.extend(
+            [
+                f"## {scenario_label}, variant {variant_id} ({variant_name}), sample {sample_index}",
+                f"(scenario_id: {sample['sample_id']}, request_id: {request_id})",
+                "",
+                "**Patch text**:",
+                "```diff",
+                patch_text.rstrip() if patch_text else "[no unified diff returned]",
+                "```",
+                "",
+                "**Build pipeline**:",
+                f"- strict apply (`git apply --index`): {strict.get('status', 'N/A')} ({strict_msg})",
+                f"- fuzzy apply (`git apply --3way --index`): {fuzzy.get('status', 'N/A')} ({fuzzy_msg})",
+                f"- final_applied: {apply_result.get('final_applied', 'none')}",
+                f"- rebuild: {rebuild.get('status', 'N/A')}",
+                "",
+                "**LLM metadata**:",
+                f"- duration_ms: {llm_result.get('duration_ms', 'N/A')}",
+                f"- tokens (in/out/total): {token_usage.get('in', 'N/A')}/{token_usage.get('out', 'N/A')}/{token_usage.get('total', 'N/A')}",
+                f"- finish_reason: {llm_result.get('finish_reason', 'N/A')}",
+                "",
+                "**PM semantic eval**: ___ (correct / acceptable / wrong)",
+                "**PM 备注**: ___",
+                "",
+                "---",
+                "",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def run_part2_ab_test(
+    modules: dict[str, ModuleType],
+    gate: SideEffectGate,
+    *,
+    scenarios: dict[str, ErrorScenario] | None = None,
+) -> dict[str, Any]:
+    """Run S0-A Part 2 A/B experiment. This is side-effect gated."""
+
+    gate.require("S0-A Part 2 A/B test")
+    run_id = datetime.now().strftime("part2_%Y%m%d_%H%M%S_%f")
+    selected = scenarios or ERROR_SCENARIOS
+    results: dict[str, Any] = {
+        "schema": "s0_a_part2_results.v1",
+        "run_id": run_id,
+        "created_at": utc_now(),
+        "sample_count_per_variant": PART2_SAMPLE_COUNT,
+        "variants": PART_2_VARIANTS,
+        "real_llm_calls_expected": len(selected) * len(PART_2_VARIANTS) * PART2_SAMPLE_COUNT,
+        "samples": [],
+        "scenario_contexts": {},
+        "output_paths": {
+            "results_json": str(PART2_RESULTS_PATH),
+            "review_form_md": str(PART2_REVIEW_FORM_PATH),
+        },
+    }
+
+    try:
+        for scenario in selected.values():
+            context = prepare_part2_scenario_context(scenario, modules, gate, run_id=run_id)
+            results["scenario_contexts"][scenario.scenario_id] = {
+                key: value for key, value in context.items()
+                if key not in {"evidence", "_parsed_failure_obj"}
+            }
+            if context.get("status") != "ok":
+                continue
+            evidence = context["evidence"]
+            parsed_failure = context["_parsed_failure_obj"]
+            raw_log_path = Path(context["fail_log"])
+            for variant_config in PART_2_VARIANTS.values():
+                for sample_index in range(1, PART2_SAMPLE_COUNT + 1):
+                    sample = run_part2_sample(
+                        scenario,
+                        parsed_failure,
+                        evidence,
+                        variant_config,
+                        sample_index,
+                        modules,
+                        gate,
+                        run_id=run_id,
+                        raw_log_path=raw_log_path,
+                    )
+                    results["samples"].append(sample)
+                    PART2_RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+                    PART2_RESULTS_PATH.write_text(
+                        json.dumps(safe_asdict(results), ensure_ascii=False, indent=2, sort_keys=True, default=str) + "\n",
+                        encoding="utf-8",
+                    )
+                    PART2_REVIEW_FORM_PATH.write_text(render_part2_review_form(results), encoding="utf-8")
+    finally:
+        cleanup_clangd_client()
+
+    results["status"] = "complete"
+    results["real_llm_calls_observed"] = sum(
+        1 for sample in results["samples"]
+        if (sample.get("llm_call") or {}).get("status") == "ok"
+    )
+    PART2_RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PART2_RESULTS_PATH.write_text(
+        json.dumps(safe_asdict(results), ensure_ascii=False, indent=2, sort_keys=True, default=str) + "\n",
+        encoding="utf-8",
+    )
+    PART2_REVIEW_FORM_PATH.write_text(render_part2_review_form(results), encoding="utf-8")
+    return results
 
 
 def _init_tmp_git_repo(repo_path: Path, files: dict[str, str]) -> None:
@@ -2215,7 +2866,7 @@ def describe_framework() -> dict[str, Any]:
     """Return a side-effect-free framework summary for PM review."""
 
     return {
-        "phase": "S0-A Part 1 Step 0 framework only",
+        "phase": "S0-A Part 1 complete + Step 2 tests + Part 2 framework",
         "side_effects": {
             "worktree": False,
             "gbs_build": False,
@@ -2237,6 +2888,17 @@ def describe_framework() -> dict[str, Any]:
             "verify_timeout_sec": VERIFY_TIMEOUT_SEC,
             "max_patch_lines": MAX_PATCH_LINES,
             "third_attempt_allowed": False,
+        },
+        "part2_ab_test": {
+            "variants": PART_2_VARIANTS,
+            "sample_count_per_variant": PART2_SAMPLE_COUNT,
+            "expected_llm_calls": len(ERROR_SCENARIOS) * len(PART_2_VARIANTS) * PART2_SAMPLE_COUNT,
+            "outputs": {
+                "results_json": str(PART2_RESULTS_PATH),
+                "review_form_md": str(PART2_REVIEW_FORM_PATH),
+            },
+            "mode": "run-part2-ab-test",
+            "side_effect_gate_required": True,
         },
         "failure_path_tests": [
             {
@@ -2290,12 +2952,13 @@ def main(argv: list[str] | None = None) -> int:
             "test-uncommitted-changes",
             "test-non-git-repo",
             "run-failure-path-tests",
+            "run-part2-ab-test",
             "self-test-clangd",
             "self-test-clangd-integration",
             "run-part1",
         ],
         default="describe",
-        help="run-part1 is blocked unless --enable-side-effects is set later by PM instruction",
+        help="run-part1/run-part2-ab-test are blocked unless --enable-side-effects is set by PM instruction",
     )
     parser.add_argument("--scenario", choices=sorted(ERROR_SCENARIOS), help="scenario for run-part1")
     parser.add_argument("--enable-side-effects", action="store_true")
@@ -2363,6 +3026,15 @@ def main(argv: list[str] | None = None) -> int:
             reason="PM-confirmed S0-A Part 1 execution" if args.enable_side_effects else "Step 0 framework review only",
         )
         result = run_repair_loop_for_scenario(ERROR_SCENARIOS[args.scenario], modules, gate)
+        print(json.dumps(safe_asdict(result), indent=2, ensure_ascii=False, sort_keys=True, default=str))
+        return 0
+
+    if args.mode == "run-part2-ab-test":
+        gate = SideEffectGate(
+            enabled=args.enable_side_effects,
+            reason="PM-confirmed S0-A Part 2 execution" if args.enable_side_effects else "Part 2 code review only",
+        )
+        result = run_part2_ab_test(modules, gate)
         print(json.dumps(safe_asdict(result), indent=2, ensure_ascii=False, sort_keys=True, default=str))
         return 0
 
