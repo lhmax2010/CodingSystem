@@ -22,14 +22,13 @@ import json
 import os
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass, field, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import Any
 
 
@@ -1654,6 +1653,27 @@ def call_llm_for_patch(
     )
 
 
+def llm_call_once_for_subprocess(prompt_file: Path, system_file: Path, scenario_id: str) -> dict[str, Any]:
+    """Internal child-process entry point for one Part 2 LLM call."""
+
+    llm_adapter = load_spike_module("s0a_llm_adapter_child", LLM_ADAPTER_PATH)
+    adapter = llm_adapter.get_adapter(str(LLM_CONFIG_PATH))
+    response = adapter.call(
+        prompt_file.read_text(encoding="utf-8"),
+        system=system_file.read_text(encoding="utf-8"),
+        scenario_id=scenario_id,
+    )
+    return {
+        "provider": response.provider,
+        "model": response.model,
+        "request_id": response.request_id,
+        "content": response.content,
+        "token_usage": response.token_usage,
+        "duration_ms": response.duration_ms,
+        "finish_reason": response.finish_reason,
+    }
+
+
 def extract_unified_diff(text: str) -> str:
     """Extract a unified diff from an LLM response."""
 
@@ -2175,29 +2195,60 @@ class Part2LLMWallClockTimeout(TimeoutError):
     """Raised when one Part 2 LLM call exceeds total wall-clock budget."""
 
 
-def _raise_part2_llm_wall_clock_timeout(_signum: int, _frame: Any) -> None:
-    raise Part2LLMWallClockTimeout(
-        f"Part 2 LLM call exceeded {PART2_LLM_TOTAL_TIMEOUT_SEC}s wall-clock timeout"
-    )
-
-
 def _call_adapter_with_part2_total_timeout(
-    adapter: Any,
+    _adapter: Any,
     prompt: str,
     *,
     system: str,
     scenario_id: str,
 ) -> Any:
-    """Call adapter with an outer wall-clock timeout in addition to socket timeout."""
+    """Call adapter in a child process so wall-clock timeout is enforceable."""
 
-    previous_handler = signal.getsignal(signal.SIGALRM)
-    signal.signal(signal.SIGALRM, _raise_part2_llm_wall_clock_timeout)
-    signal.setitimer(signal.ITIMER_REAL, PART2_LLM_TOTAL_TIMEOUT_SEC)
+    input_dir = S0A_TMP_ROOT / "part2_llm_inputs"
+    input_dir.mkdir(parents=True, exist_ok=True)
+    request_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", scenario_id)
+    prompt_file = input_dir / f"{request_id}.prompt.json"
+    system_file = input_dir / f"{request_id}.system.txt"
+    prompt_file.write_text(prompt, encoding="utf-8")
+    system_file.write_text(system, encoding="utf-8")
+
+    command = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        "--mode",
+        "llm-call-once",
+        "--prompt-file",
+        str(prompt_file),
+        "--system-file",
+        str(system_file),
+        "--scenario-id",
+        scenario_id,
+    ]
     try:
-        return adapter.call(prompt, system=system, scenario_id=scenario_id)
-    finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        signal.signal(signal.SIGALRM, previous_handler)
+        proc = subprocess.run(
+            command,
+            cwd=CODING_SYSTEM_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=PART2_LLM_TOTAL_TIMEOUT_SEC,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise Part2LLMWallClockTimeout(
+            f"Part 2 LLM call exceeded {PART2_LLM_TOTAL_TIMEOUT_SEC}s wall-clock timeout"
+        ) from exc
+
+    if proc.returncode != 0:
+        raise RuntimeError(
+            "Part 2 LLM child process failed: "
+            f"exit={proc.returncode}, stderr={proc.stderr[-1200:]}, stdout={proc.stdout[-1200:]}"
+        )
+    stdout_lines = [line for line in proc.stdout.splitlines() if line.strip()]
+    if not stdout_lines:
+        raise RuntimeError("Part 2 LLM child process returned empty stdout")
+    payload = json.loads(stdout_lines[-1])
+    return SimpleNamespace(**payload)
 
 
 def call_llm_for_part2_variant(
@@ -3526,6 +3577,7 @@ def main(argv: list[str] | None = None) -> int:
             "test-negative-facts-purity",
             "run-failure-path-tests",
             "run-part2-ab-test",
+            "llm-call-once",
             "self-test-clangd",
             "self-test-clangd-integration",
             "run-part1",
@@ -3535,7 +3587,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--scenario", choices=sorted(ERROR_SCENARIOS), help="scenario for run-part1")
     parser.add_argument("--enable-side-effects", action="store_true")
+    parser.add_argument("--prompt-file", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--system-file", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--scenario-id", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+
+    if args.mode == "llm-call-once":
+        if args.prompt_file is None or args.system_file is None or not args.scenario_id:
+            parser.error("--prompt-file, --system-file, and --scenario-id are required")
+        result = llm_call_once_for_subprocess(args.prompt_file, args.system_file, args.scenario_id)
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True, default=str))
+        return 0
 
     if args.mode == "describe":
         print(json.dumps(describe_framework(), indent=2, ensure_ascii=False, sort_keys=True, default=str))
