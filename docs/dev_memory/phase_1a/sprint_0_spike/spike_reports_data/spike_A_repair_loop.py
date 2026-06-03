@@ -22,6 +22,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -64,6 +65,7 @@ DEFAULT_CLANGD = Path("/usr/bin/clangd")
 PART2_SAMPLE_COUNT = 3
 PART2_LLM_TIMEOUT_RETRIES = 1
 PART2_RAW_LOG_CHAR_LIMIT = 12000
+PART2_LLM_TOTAL_TIMEOUT_SEC = 900
 CNEI_EVIDENCE_PACKET_MAX_TOKENS = 4000
 PART2_SHARED_SYSTEM_PROMPT = (
     "You are repairing a Tizen C/C++ package. Return only a unified diff.\n"
@@ -2169,6 +2171,35 @@ def _is_timeout_error(exc: Exception) -> bool:
     return "timeout" in lowered or "timed out" in lowered or "read timed out" in lowered
 
 
+class Part2LLMWallClockTimeout(TimeoutError):
+    """Raised when one Part 2 LLM call exceeds total wall-clock budget."""
+
+
+def _raise_part2_llm_wall_clock_timeout(_signum: int, _frame: Any) -> None:
+    raise Part2LLMWallClockTimeout(
+        f"Part 2 LLM call exceeded {PART2_LLM_TOTAL_TIMEOUT_SEC}s wall-clock timeout"
+    )
+
+
+def _call_adapter_with_part2_total_timeout(
+    adapter: Any,
+    prompt: str,
+    *,
+    system: str,
+    scenario_id: str,
+) -> Any:
+    """Call adapter with an outer wall-clock timeout in addition to socket timeout."""
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    signal.signal(signal.SIGALRM, _raise_part2_llm_wall_clock_timeout)
+    signal.setitimer(signal.ITIMER_REAL, PART2_LLM_TOTAL_TIMEOUT_SEC)
+    try:
+        return adapter.call(prompt, system=system, scenario_id=scenario_id)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+
+
 def call_llm_for_part2_variant(
     scenario: ErrorScenario,
     parsed_failure: ParsedBuildFailure,
@@ -2205,7 +2236,8 @@ def call_llm_for_part2_variant(
     max_calls = 1 + PART2_LLM_TIMEOUT_RETRIES
     for call_index in range(1, max_calls + 1):
         try:
-            response = adapter.call(
+            response = _call_adapter_with_part2_total_timeout(
+                adapter,
                 prompt,
                 system=system,
                 scenario_id=f"{sample_id}_call{call_index}",
@@ -2230,6 +2262,11 @@ def call_llm_for_part2_variant(
                     )
                 ),
             }
+        except Part2LLMWallClockTimeout as exc:
+            errors.append({"type": type(exc).__name__, "message": str(exc)})
+            if call_index < max_calls:
+                continue
+            break
         except llm_adapter_error as exc:
             errors.append({"type": type(exc).__name__, "message": str(exc)})
             if call_index < max_calls and _is_timeout_error(exc):
