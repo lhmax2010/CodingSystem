@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +53,33 @@ def rewrite_commands(
             rewritten = rewritten.replace(placeholder, new)
         return rewritten
 
+    def filter_pseudo_includes(command: str) -> str:
+        """Remove CMake SYSTEM pseudo include flags before clangd/LLM use.
+
+        CMake can produce -I<path>/SYSTEM as an artifact of SYSTEM include
+        handling. clangd ignores the missing path, but evidence packets should
+        not show it to the LLM as if it were a real source directory.
+        """
+
+        command = re.sub(r"\s-I\S*/SYSTEM(?=\s|$)", "", command)
+        command = re.sub(r"\s-isystem\s+\S*/SYSTEM(?=\s|$)", "", command)
+        return command
+
+    def filter_pseudo_include_args(arguments: list[str]) -> list[str]:
+        filtered: list[str] = []
+        skip_next = False
+        for index, argument in enumerate(arguments):
+            if skip_next:
+                skip_next = False
+                continue
+            if argument.startswith("-I") and argument.endswith("/SYSTEM"):
+                continue
+            if argument == "-isystem" and index + 1 < len(arguments) and arguments[index + 1].endswith("/SYSTEM"):
+                skip_next = True
+                continue
+            filtered.append(argument)
+        return filtered
+
     rewritten_entries = 0
     for entry in cc:
         before = json.dumps(entry, sort_keys=True)
@@ -60,9 +88,9 @@ def rewrite_commands(
         if "directory" in entry:
             entry["directory"] = apply_rules(entry["directory"])
         if "command" in entry:
-            entry["command"] = apply_rules(entry["command"])
+            entry["command"] = filter_pseudo_includes(apply_rules(entry["command"]))
         if "arguments" in entry:
-            entry["arguments"] = [apply_rules(arg) for arg in entry["arguments"]]
+            entry["arguments"] = filter_pseudo_include_args([apply_rules(arg) for arg in entry["arguments"]])
         after = json.dumps(entry, sort_keys=True)
         if after != before:
             rewritten_entries += 1

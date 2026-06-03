@@ -25,7 +25,7 @@ import shutil
 import subprocess
 import sys
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType
@@ -153,12 +153,14 @@ class RepairAttemptResult:
 
     attempt_index: int
     llm_result: LLMCallResult | None = None
+    llm_error: dict[str, str] | None = None
     patch_text: str = ""
     patch_validation: PatchValidationResult | None = None
     apply_result: CommandResult | None = None
     rebuild_result: CommandResult | None = None
     status: str = "not_started"
     failure_class: str | None = None
+    error: dict[str, str] | None = None
 
 
 @dataclass
@@ -228,6 +230,27 @@ def utc_now() -> str:
     """Return an ISO-8601 UTC timestamp for trace/event records."""
 
     return datetime.now(timezone.utc).isoformat()
+
+
+def safe_asdict(obj: Any) -> Any:
+    """Convert dataclass values to JSON-friendly structures without crashing.
+
+    dataclasses.asdict() only accepts dataclass instances. The repair loop also
+    stores lists, dicts, pathlib paths, and partially populated objects in
+    exception paths, so trace writing must be more forgiving.
+    """
+
+    if is_dataclass(obj) and not isinstance(obj, type):
+        return safe_asdict(asdict(obj))
+    if isinstance(obj, Path):
+        return str(obj)
+    if isinstance(obj, dict):
+        return {str(key): safe_asdict(value) for key, value in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [safe_asdict(value) for value in obj]
+    if hasattr(obj, "__dict__") and not isinstance(obj, type):
+        return safe_asdict(vars(obj))
+    return obj
 
 
 def load_spike_module(module_name: str, path: Path) -> ModuleType:
@@ -309,24 +332,58 @@ def create_isolated_worktree(
     run_id: str,
     gate: SideEffectGate,
 ) -> Path:
-    """Create a git worktree for the scenario.
+    """Create an isolated clone for the scenario.
 
-    Side-effectful; disabled in Step 0. Future Part 1 will use this to keep the
-    PM's source checkout untouched.
+    GBS does not recognize linked git-worktree checkouts whose .git is a file,
+    so S0-A uses git clone --shared. This keeps object storage cheap while
+    presenting GBS with a normal .git directory.
     """
 
-    gate.require("git worktree add")
+    gate.require("git clone --shared")
     source_repo = package_repo_path(scenario)
     ensure_git_repo(source_repo)
     ensure_clean_worktree(source_repo)
     worktree_path = WORKTREE_ROOT / f"{run_id}_{scenario.scenario_id}"
-    branch = f"codex/s0a/{run_id}/{scenario.scenario_id}"
-    subprocess.run(
-        ["git", "worktree", "add", "-b", branch, str(worktree_path)],
-        cwd=source_repo,
-        check=True,
+    worktree_path.parent.mkdir(parents=True, exist_ok=True)
+    if worktree_path.exists():
+        raise RuntimeError(f"isolated clone already exists: {worktree_path}")
+
+    clone = subprocess.run(
+        ["git", "clone", "--shared", "--quiet", str(source_repo.resolve()), str(worktree_path)],
+        cwd=CODING_SYSTEM_ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=60,
+        check=False,
     )
+    if clone.returncode != 0:
+        raise RuntimeError(f"git clone failed: {clone.stderr.strip()}")
+
+    git_dot = worktree_path / ".git"
+    if not git_dot.is_dir():
+        kind = "file" if git_dot.is_file() else "missing"
+        raise RuntimeError(f"expected .git directory in isolated clone, got: {kind}")
+
+    source_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=source_repo,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    ).stdout.strip()
+    subprocess.run(["git", "checkout", "--quiet", source_head], cwd=worktree_path, check=True)
+    ensure_clean_worktree(worktree_path)
     return worktree_path
+
+
+def cleanup_worktree(worktree_path: Path, gate: SideEffectGate) -> None:
+    """Remove an isolated --shared clone."""
+
+    gate.require("cleanup isolated clone")
+    if worktree_path.exists():
+        shutil.rmtree(worktree_path)
 
 
 def apply_error_mutation(worktree_path: Path, scenario: ErrorScenario, gate: SideEffectGate) -> None:
@@ -401,6 +458,92 @@ def parse_build_log(log_path: Path, modules: dict[str, ModuleType]) -> ParsedBui
         parsed_error_count=int(result.get("parsed_error_count", 0)),
         primary_candidate=result.get("primary_candidate"),
         raw_result=result,
+    )
+
+
+def parse_build_log_extended(log_path: Path, modules: dict[str, ModuleType]) -> ParsedBuildFailure:
+    """Wrap S0-04 parser with local S0-A unknown_type_name fallback.
+
+    S0-04 is a frozen Sprint 0 artifact. Its own report records the known gap
+    that unknown type name diagnostics and primary/cascade classification are
+    not covered. S0-A keeps that artifact intact and adds only a local wrapper
+    so the repair-loop spike can exercise E3.
+    """
+
+    primary_result = parse_build_log(log_path, modules)
+    if primary_result.parsed_error_count != 0:
+        return primary_result
+
+    extended = _parse_unknown_type_name_cascade(log_path)
+    if extended.parsed_error_count > 0:
+        return extended
+    return primary_result
+
+
+def _parse_unknown_type_name_cascade(log_path: Path) -> ParsedBuildFailure:
+    """Identify Clang unknown type name diagnostics and same-type cascades."""
+
+    pattern = re.compile(
+        r"(?:^|\s)(?P<path>/[^:\s]+|[^:\s]+):(?P<line>\d+):(?P<col>\d+):\s+"
+        r"error:\s+unknown type name\s+[`'\"](?P<type>[A-Za-z_][A-Za-z0-9_]*)[`'\"]"
+    )
+    errors: list[dict[str, Any]] = []
+    primary: dict[str, Any] | None = None
+    cascade_count = 0
+
+    try:
+        with log_path.open(errors="replace") as stream:
+            for log_line_no, line in enumerate(stream, start=1):
+                match = pattern.search(line)
+                if not match:
+                    continue
+                type_name = match.group("type")
+                error = {
+                    "error_type": "unknown_type_name",
+                    "path": match.group("path"),
+                    "line": int(match.group("line")),
+                    "col": int(match.group("col")),
+                    "line_no": log_line_no,
+                    "type_name": type_name,
+                    "symbol": type_name,
+                    "symbol_for_clangd": type_name,
+                    "message": line.strip(),
+                    "source_location": {
+                        "file": match.group("path"),
+                        "line": int(match.group("line")),
+                        "column": int(match.group("col")),
+                    },
+                }
+                errors.append(error)
+                if primary is None:
+                    primary = dict(error)
+                    primary["same_type_cascade_count"] = 0
+                    primary["cascade_count"] = 0
+                elif type_name == primary["type_name"]:
+                    cascade_count += 1
+    except OSError:
+        pass
+
+    if primary:
+        primary["same_type_cascade_count"] = cascade_count
+        primary["cascade_count"] = max(0, len(errors) - 1)
+        primary["total_unknown_type_name_errors"] = len(errors)
+
+    raw_result = {
+        "parser": "spike_A_unknown_type_name_v1",
+        "log_path": str(log_path),
+        "parsed_error_count": len(errors),
+        "primary_candidate": primary,
+        "primary_candidate_policy": "first_unknown_type_name_with_same_type_cascade_count",
+        "counts_by_type": {"unknown_type_name": len(errors)} if errors else {},
+        "errors": errors[:80],
+    }
+    return ParsedBuildFailure(
+        parser_name="spike_A_unknown_type_name_v1",
+        log_path=log_path,
+        parsed_error_count=len(errors),
+        primary_candidate=primary,
+        raw_result=raw_result,
     )
 
 
@@ -767,7 +910,7 @@ def _extract_symbol_for_scenario(
         return (str(symbol), "symbol") if symbol else (None, "symbol")
 
     if scenario.error_type == "unknown_type_name":
-        symbol = primary.get("type_name") or primary.get("symbol")
+        symbol = primary.get("type_name") or primary.get("symbol_for_clangd") or primary.get("symbol")
         if not symbol:
             match = re.search(r"unknown type name [`'\"“]?([A-Za-z_][A-Za-z0-9_]*)", message)
             if match:
@@ -1110,7 +1253,7 @@ def collect_evidence_packet(
             "primary_id": f"ERR-S0-A-{scenario.scenario_id}",
         },
         "facts": {
-            "scenario_mutation": asdict(scenario),
+            "scenario_mutation": safe_asdict(scenario),
             "parser_primary_candidate": primary,
             "clangd": clangd_facts,
         },
@@ -1145,9 +1288,9 @@ def collect_evidence_packet(
             ],
         },
     }
-    packet = modules["spike_05"].make_packet(packet, start)
+    packet = modules["spike_05"].make_packet(safe_asdict(packet), start)
     detector = modules["spike_06"].RawDataDetector()
-    raw_status = asdict(detector.validate(packet))
+    raw_status = safe_asdict(detector.validate(packet))
     return EvidenceCollectionResult(packet=packet, raw_data_status=raw_status, clangd_facts=clangd_facts, degraded_reasons=degraded)
 
 
@@ -1365,7 +1508,7 @@ def build_trace_payload(result: RepairRunResult) -> dict[str, Any]:
             "events_jsonl": "events.jsonl",
             "raw_logs_policy": "raw logs stay under /tmp/coding-system-s0 and are referenced by path only",
         },
-        "attempts": asdict(result.attempts),
+        "attempts": safe_asdict(result.attempts),
     }
 
 
@@ -1414,7 +1557,7 @@ def run_repair_loop_for_scenario(
             event_type="tool_call",
             name="build_finished",
             result_summary=f"exit_code={result.build_failure.exit_code}",
-            payload=asdict(result.build_failure),
+            payload=safe_asdict(result.build_failure),
         )
         if result.build_failure.exit_code == 0:
             result.final_status = "scenario_did_not_fail"
@@ -1427,7 +1570,7 @@ def run_repair_loop_for_scenario(
             )
             return result
 
-        result.parsed_failure = parse_build_log(fail_log, modules)
+        result.parsed_failure = parse_build_log_extended(fail_log, modules)
         emit_event(
             events_path,
             stage="parse_errors",
@@ -1439,6 +1582,31 @@ def run_repair_loop_for_scenario(
                 "primary_candidate": result.parsed_failure.primary_candidate,
             },
         )
+        if result.parsed_failure.parsed_error_count == 0 or not result.parsed_failure.primary_candidate:
+            result.final_status = "fail_safe"
+            result.failure_envelope = make_failure_envelope(
+                scenario,
+                "initial_build_unexpected_failure",
+                "initial build failed, but parser found no C/C++ primary error",
+                stage="parse_errors",
+                reason_code="initial_build_unexpected_failure",
+                details={
+                    "parser": result.parsed_failure.parser_name,
+                    "parsed_error_count": result.parsed_failure.parsed_error_count,
+                    "primary_candidate": result.parsed_failure.primary_candidate,
+                },
+                last_attempt_log_excerpt=result.build_failure.tail_excerpt if result.build_failure else None,
+            )
+            emit_event(
+                events_path,
+                stage="repair_loop",
+                event_type="state_transition",
+                name="initial_build_unexpected_failure",
+                result_summary="parsed_error_count=0; LLM call skipped",
+                payload=result.failure_envelope,
+            )
+            return result
+
         result.evidence = collect_evidence_packet(scenario, worktree_path, result.parsed_failure, modules, gate)
         emit_event(
             events_path,
@@ -1464,72 +1632,119 @@ def run_repair_loop_for_scenario(
             )
             return result
 
+        llm_adapter_error = getattr(modules.get("llm_adapter"), "LLMAdapterError", Exception)
         for attempt_index in range(1, MAX_PATCH_ATTEMPTS + 1):
             attempt = RepairAttemptResult(attempt_index=attempt_index)
             result.attempts.append(attempt)
-            attempt.llm_result = call_llm_for_patch(result.evidence, attempt_index, modules, gate)
-            emit_event(
-                events_path,
-                stage="generate_patch",
-                event_type="llm_call",
-                name="llm_called",
-                result_summary=f"attempt={attempt_index}, request_id={attempt.llm_result.request_id}",
-                tokens_in=attempt.llm_result.token_usage.get("in", 0),
-                tokens_out=attempt.llm_result.token_usage.get("out", 0),
-                request_id=attempt.llm_result.request_id,
-            )
-            attempt.patch_text = extract_unified_diff(attempt.llm_result.content)
-            attempt.patch_validation = validate_patch(attempt.patch_text, worktree_path)
-            emit_event(
-                events_path,
-                stage="validate_patch",
-                event_type="tool_call",
-                name="patch_validated",
-                result_summary=f"accepted={attempt.patch_validation.accepted}, reason={attempt.patch_validation.reason}",
-                payload=asdict(attempt.patch_validation),
-            )
-            if not attempt.patch_validation.accepted:
-                attempt.status = "patch_rejected"
-                attempt.failure_class = attempt.patch_validation.reason
+
+            try:
+                attempt.llm_result = call_llm_for_patch(result.evidence, attempt_index, modules, gate)
+            except llm_adapter_error as exc:
+                attempt.status = "llm_call_failed"
+                attempt.failure_class = "llm_call_failed"
+                attempt.llm_error = {"type": type(exc).__name__, "message": str(exc)}
+                emit_event(
+                    events_path,
+                    stage="generate_patch",
+                    event_type="llm_call",
+                    name="llm_call_failed",
+                    result_summary=f"attempt={attempt_index}, error={type(exc).__name__}",
+                    payload=attempt.llm_error,
+                    attempt_index=attempt_index,
+                )
+                continue
+            except Exception as exc:
+                attempt.status = "llm_call_unexpected_error"
+                attempt.failure_class = "llm_call_unexpected_error"
+                attempt.llm_error = {"type": type(exc).__name__, "message": str(exc)}
+                emit_event(
+                    events_path,
+                    stage="generate_patch",
+                    event_type="llm_call",
+                    name="llm_call_unexpected_error",
+                    result_summary=f"attempt={attempt_index}, error={type(exc).__name__}",
+                    payload=attempt.llm_error,
+                    attempt_index=attempt_index,
+                )
                 continue
 
-            attempt.apply_result = apply_patch_to_worktree(attempt.patch_text, worktree_path, gate)
-            emit_event(
-                events_path,
-                stage="apply_patch",
-                event_type="tool_call",
-                name="patch_applied",
-                result_summary=f"exit_code={attempt.apply_result.exit_code}",
-                payload=asdict(attempt.apply_result),
-            )
-            if attempt.apply_result.exit_code != 0:
-                attempt.status = "apply_failed"
-                attempt.failure_class = "apply_conflict"
-                continue
+            try:
+                emit_event(
+                    events_path,
+                    stage="generate_patch",
+                    event_type="llm_call",
+                    name="llm_called",
+                    result_summary=f"attempt={attempt_index}, request_id={attempt.llm_result.request_id}",
+                    tokens_in=attempt.llm_result.token_usage.get("in", 0),
+                    tokens_out=attempt.llm_result.token_usage.get("out", 0),
+                    request_id=attempt.llm_result.request_id,
+                )
+                attempt.patch_text = extract_unified_diff(attempt.llm_result.content)
+                attempt.patch_validation = validate_patch(attempt.patch_text, worktree_path)
+                emit_event(
+                    events_path,
+                    stage="validate_patch",
+                    event_type="tool_call",
+                    name="patch_validated",
+                    result_summary=f"accepted={attempt.patch_validation.accepted}, reason={attempt.patch_validation.reason}",
+                    payload=safe_asdict(attempt.patch_validation),
+                )
+                if not attempt.patch_validation.accepted:
+                    attempt.status = "patch_rejected"
+                    attempt.failure_class = attempt.patch_validation.reason
+                    continue
 
-            rebuild_log = TRACE_ROOT / run_id / scenario.scenario_id / f"rebuild_attempt_{attempt_index}.log"
-            emit_event(
-                events_path,
-                stage="verify_rebuild",
-                event_type="tool_call",
-                name="rebuild_started",
-                result_summary=f"attempt={attempt_index}",
-                log_path=str(rebuild_log),
-                verify_timeout_sec=VERIFY_TIMEOUT_SEC,
-            )
-            attempt.rebuild_result = run_gbs_build(
-                worktree_path,
-                scenario,
-                rebuild_log,
-                gate,
-                timeout_sec=VERIFY_TIMEOUT_SEC,
-            )
-            if attempt.rebuild_result.exit_code == 0:
-                attempt.status = "repair_succeeded"
-                result.final_status = "repair_succeeded"
-                return result
-            attempt.status = "rebuild_failed"
-            attempt.failure_class = "patch_did_not_fix_build"
+                attempt.apply_result = apply_patch_to_worktree(attempt.patch_text, worktree_path, gate)
+                emit_event(
+                    events_path,
+                    stage="apply_patch",
+                    event_type="tool_call",
+                    name="patch_applied",
+                    result_summary=f"exit_code={attempt.apply_result.exit_code}",
+                    payload=safe_asdict(attempt.apply_result),
+                )
+                if attempt.apply_result.exit_code != 0:
+                    attempt.status = "apply_failed"
+                    attempt.failure_class = "apply_conflict"
+                    continue
+
+                rebuild_log = TRACE_ROOT / run_id / scenario.scenario_id / f"rebuild_attempt_{attempt_index}.log"
+                emit_event(
+                    events_path,
+                    stage="verify_rebuild",
+                    event_type="tool_call",
+                    name="rebuild_started",
+                    result_summary=f"attempt={attempt_index}",
+                    log_path=str(rebuild_log),
+                    verify_timeout_sec=VERIFY_TIMEOUT_SEC,
+                )
+                attempt.rebuild_result = run_gbs_build(
+                    worktree_path,
+                    scenario,
+                    rebuild_log,
+                    gate,
+                    timeout_sec=VERIFY_TIMEOUT_SEC,
+                )
+                if attempt.rebuild_result.exit_code == 0:
+                    attempt.status = "repair_succeeded"
+                    result.final_status = "repair_succeeded"
+                    return result
+                attempt.status = "rebuild_failed"
+                attempt.failure_class = "patch_did_not_fix_build"
+            except Exception as exc:
+                attempt.status = "attempt_unexpected_error"
+                attempt.failure_class = "attempt_unexpected_error"
+                attempt.error = {"type": type(exc).__name__, "message": str(exc)}
+                emit_event(
+                    events_path,
+                    stage="repair_attempt",
+                    event_type="tool_call",
+                    name="attempt_unexpected_error",
+                    result_summary=f"attempt={attempt_index}, error={type(exc).__name__}",
+                    payload=attempt.error,
+                    attempt_index=attempt_index,
+                )
+                continue
 
         result.final_status = "fail_safe"
         result.failure_envelope = make_failure_envelope(
@@ -1748,7 +1963,7 @@ def describe_framework() -> dict[str, Any]:
             "RawDataDetector": str(SPIKE_06_PATH),
             "LLMAdapter": str(LLM_ADAPTER_PATH),
         },
-        "scenarios": {key: asdict(value) for key, value in ERROR_SCENARIOS.items()},
+        "scenarios": {key: safe_asdict(value) for key, value in ERROR_SCENARIOS.items()},
         "bounded_repair": {
             "max_patch_attempts": MAX_PATCH_ATTEMPTS,
             "verify_timeout_sec": VERIFY_TIMEOUT_SEC,
@@ -1824,7 +2039,7 @@ def main(argv: list[str] | None = None) -> int:
             reason="PM-confirmed S0-A Part 1 execution" if args.enable_side_effects else "Step 0 framework review only",
         )
         result = run_repair_loop_for_scenario(ERROR_SCENARIOS[args.scenario], modules, gate)
-        print(json.dumps(asdict(result), indent=2, ensure_ascii=False, sort_keys=True, default=str))
+        print(json.dumps(safe_asdict(result), indent=2, ensure_ascii=False, sort_keys=True, default=str))
         return 0
 
     raise AssertionError(args.mode)

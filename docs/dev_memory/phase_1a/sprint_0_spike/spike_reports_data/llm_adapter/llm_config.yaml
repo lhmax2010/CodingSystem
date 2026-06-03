@@ -49,9 +49,9 @@ providers:
     # 如需国际版,改为 https://api.moonshot.ai/v1/chat/completions
     model: kimi-k2.6
     api_key_env: MOONSHOT_API_KEY
-    max_tokens: 4096
+    max_tokens: 8192
     temperature: 0.0   # 对 K2.6 系列实际不生效(adapter 剥离),保留供其他模型
-    timeout_sec: 60
+    timeout_sec: 300
     extra_headers: {}
 
   # ---------- Anthropic Claude ----------
