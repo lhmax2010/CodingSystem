@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import hashlib
 import importlib.util
 import json
 import os
@@ -83,6 +84,11 @@ NEGATIVE_FACT_REQUIRED_FIELDS = {
     "implication",
 }
 NEGATIVE_FACT_ALLOWED_RESULTS = {"not_found", "unavailable", "present"}
+EXPECTED_NEGATIVE_RESULT = {
+    "E1_cannot_find_header": "not_found",
+    "E2_undefined_reference": "not_found",
+    "E3_unknown_type_name_cascade": "not_found",
+}
 NEGATIVE_FACT_FORBIDDEN_PHRASES = (
     "must",
     "do not",
@@ -114,6 +120,8 @@ class ErrorScenario:
     source_file: Path
     mutation_kind: str
     mutation_target: str
+    repair_target_file: Path
+    repair_anchor_keyword: str
     expected_primary_hint: str
     notes: str
 
@@ -235,6 +243,8 @@ ERROR_SCENARIOS: dict[str, ErrorScenario] = {
         source_file=Path("CMakeLists.txt"),
         mutation_kind="remove_line",
         mutation_target="${CMAKE_SOURCE_DIR}/src/parser/include",
+        repair_target_file=Path("CMakeLists.txt"),
+        repair_anchor_keyword="INCLUDE_DIRECTORIES",
         expected_primary_hint="tool/pkg-db-recovery.c includes pkgmgr_parser_db.h",
         notes="Remove parser include dir from root CMakeLists.txt.",
     ),
@@ -245,6 +255,8 @@ ERROR_SCENARIOS: dict[str, ErrorScenario] = {
         source_file=Path("tool/CMakeLists.txt"),
         mutation_kind="remove_line",
         mutation_target="${TARGET_LIB_PKGMGR_PARSER}",
+        repair_target_file=Path("tool/CMakeLists.txt"),
+        repair_anchor_keyword="TARGET_LINK_LIBRARIES",
         expected_primary_hint="pkg-db-creator.c calls pkgmgr_parser_create_and_initialize_db",
         notes="Remove parser library from tool target_link_libraries.",
     ),
@@ -255,6 +267,8 @@ ERROR_SCENARIOS: dict[str, ErrorScenario] = {
         source_file=Path("include/pkgmgrinfo_type.h"),
         mutation_kind="remove_typedef",
         mutation_target="typedef void *pkgmgrinfo_appinfo_h;",
+        repair_target_file=Path("include/pkgmgrinfo_type.h"),
+        repair_anchor_keyword="pkgmgrinfo_pkginfo_h",
         expected_primary_hint="public typedef drift cascades through pkgmgr-info and consumers",
         notes="Delete pkgmgrinfo_appinfo_h typedef; reused later for S0-C.",
     ),
@@ -356,6 +370,25 @@ def refresh_packet_token_metadata(packet: dict[str, Any]) -> None:
     collection_metadata["budget_tokens"] = CNEI_EVIDENCE_PACKET_MAX_TOKENS
     collection_metadata["budget_pass"] = token_estimate <= CNEI_EVIDENCE_PACKET_MAX_TOKENS
     collection_metadata["token_estimator"] = "tiktoken_or_chars_div_4"
+
+
+def validate_final_evidence_packet(
+    evidence: EvidenceCollectionResult,
+    modules: dict[str, ModuleType],
+) -> dict[str, Any]:
+    """Refresh metadata and validate the exact packet that may be sent to LLM."""
+
+    refresh_packet_token_metadata(evidence.packet)
+    detector = modules["spike_06"].RawDataDetector()
+    evidence.raw_data_status = safe_asdict(detector.validate(evidence.packet))
+    return evidence.raw_data_status
+
+
+def append_degraded_reason(packet: dict[str, Any], reason: str) -> None:
+    """Append one semicolon-delimited degraded reason to an EvidencePacket."""
+
+    existing = packet.get("degraded_reason")
+    packet["degraded_reason"] = f"{existing};{reason}" if existing else reason
 
 
 def load_spike_module(module_name: str, path: Path) -> ModuleType:
@@ -1308,6 +1341,71 @@ def collect_clangd_facts_self_test(modules: dict[str, ModuleType]) -> dict[str, 
     return result
 
 
+def collect_target_source_excerpt(
+    worktree_path: Path,
+    scenario: ErrorScenario,
+    *,
+    context_radius: int = 25,
+) -> dict[str, Any]:
+    """Collect the exact current source block for the file the repair must edit.
+
+    The compile diagnostic location is not always the repair location. For
+    example, E1 fails in a .cc file but the fix belongs in CMakeLists.txt.
+    Scenario config is therefore the source of truth for repair_target_file.
+    """
+
+    target_path = worktree_path / scenario.repair_target_file
+    if not target_path.exists():
+        return {
+            "schema": "target_source_excerpt.v1.spike_A",
+            "status": "unavailable",
+            "reason": "repair_target_file_not_found",
+            "repair_target_file": str(scenario.repair_target_file),
+            "anchor_keyword": scenario.repair_anchor_keyword,
+            "source_state": "mutated_worktree",
+        }
+
+    lines = target_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    anchor_index = next(
+        (index for index, line in enumerate(lines) if scenario.repair_anchor_keyword in line),
+        None,
+    )
+    if anchor_index is None:
+        return {
+            "schema": "target_source_excerpt.v1.spike_A",
+            "status": "unavailable",
+            "reason": "repair_anchor_not_found",
+            "repair_target_file": str(scenario.repair_target_file),
+            "anchor_keyword": scenario.repair_anchor_keyword,
+            "source_state": "mutated_worktree",
+        }
+
+    start_index = max(0, anchor_index - context_radius)
+    end_index = min(len(lines), anchor_index + context_radius + 1)
+    selected_lines = lines[start_index:end_index]
+    exact_content = "\n".join(selected_lines)
+    numbered_content = "\n".join(
+        f"{line_no}: {line}"
+        for line_no, line in enumerate(selected_lines, start=start_index + 1)
+    )
+    return {
+        "schema": "target_source_excerpt.v1.spike_A",
+        "status": "ok",
+        "repair_target_file": str(scenario.repair_target_file),
+        "anchor_keyword": scenario.repair_anchor_keyword,
+        "anchor_line": anchor_index + 1,
+        "start_line": start_index + 1,
+        "end_line": end_index,
+        "line_count": len(selected_lines),
+        "source_state": "mutated_worktree",
+        "selection_policy": "scenario repair target anchor +/-25 lines",
+        "note": "Repair target is selected by scenario, not by primary diagnostic file.",
+        "content_sha256": hashlib.sha256(exact_content.encode("utf-8")).hexdigest(),
+        "content": exact_content,
+        "content_with_line_numbers": numbered_content,
+    }
+
+
 def collect_evidence_packet(
     scenario: ErrorScenario,
     worktree_path: Path,
@@ -1332,8 +1430,12 @@ def collect_evidence_packet(
     clangd_facts: dict[str, Any] = {}
     degraded: list[str] = []
     clangd_facts = collect_clangd_facts(scenario, worktree_path, parsed_failure, modules, gate)
-    if clangd_facts.get("status") != "ok":
+    clangd_degraded = clangd_facts.get("status") != "ok"
+    if clangd_degraded:
         degraded.append(f"clangd:{clangd_facts.get('reason', 'unknown_degraded_reason')}")
+    target_source_excerpt = collect_target_source_excerpt(worktree_path, scenario)
+    if target_source_excerpt.get("status") != "ok":
+        degraded.append(f"target_source_excerpt:{target_source_excerpt.get('reason', 'unknown_degraded_reason')}")
 
     excerpt = modules["spike_05"].bounded_excerpt(
         parsed_failure.log_path,
@@ -1363,6 +1465,7 @@ def collect_evidence_packet(
             "parser_primary_candidate": primary,
             "clangd": clangd_facts,
         },
+        "target_source_excerpt": target_source_excerpt,
         "negative_facts": [],
         "known_issue_matches": [],
         "log_excerpt": [excerpt],
@@ -1381,7 +1484,8 @@ def collect_evidence_packet(
             "collectors_run": [
                 {"name": "LogErrorParser", "status": "ok", "mode": "spike_04.parse_log"},
                 {"name": "EvidencePacketBuilder", "status": "ok", "mode": "spike_05_extended"},
-                {"name": "ClangdCollector", "status": "degraded" if degraded else "ok", "mode": "spike_03.JsonRpcClient"},
+                {"name": "ClangdCollector", "status": "degraded" if clangd_degraded else "ok", "mode": "spike_03.JsonRpcClient"},
+                {"name": "TargetSourceExcerptCollector", "status": "ok" if target_source_excerpt.get("status") == "ok" else "degraded", "mode": "scenario_repair_target"},
                 {"name": "RawDataDetector", "status": "pending", "mode": "spike_06.RawDataDetector"},
             ],
         },
@@ -1390,6 +1494,37 @@ def collect_evidence_packet(
     detector = modules["spike_06"].RawDataDetector()
     raw_status = safe_asdict(detector.validate(packet))
     return EvidenceCollectionResult(packet=packet, raw_data_status=raw_status, clangd_facts=clangd_facts, degraded_reasons=degraded)
+
+
+def _negative_implication(
+    result: str,
+    not_found_msg: str,
+    unavailable_msg: str,
+    present_msg: str,
+) -> str:
+    """Return an implication that is conditional on the observed check result."""
+
+    if result == "not_found":
+        return not_found_msg
+    if result == "unavailable":
+        return unavailable_msg
+    if result == "present":
+        return present_msg
+    return "unknown result state"
+
+
+def _negative_fact_candidates(
+    scenario: ErrorScenario,
+    parsed_failure: ParsedBuildFailure,
+    worktree_path: Path,
+) -> list[dict[str, Any]]:
+    if scenario.error_type == "undefined_reference":
+        return [_negative_fact_e2_missing_parser_library(worktree_path)]
+    if scenario.error_type == "cannot_find_header":
+        return [_negative_fact_e1_missing_parser_include(worktree_path)]
+    if scenario.error_type == "unknown_type_name":
+        return [_negative_fact_e3_missing_typedef(worktree_path, parsed_failure)]
+    return []
 
 
 def collect_negative_facts(
@@ -1401,15 +1536,15 @@ def collect_negative_facts(
 
     Negative facts are not behavioral prompt guidance. They are bounded facts
     from concrete checks against the error-time source/build configuration.
+    Facts with result=present are intentionally excluded: they are positive
+    observations, not negative facts.
     """
 
-    if scenario.error_type == "undefined_reference":
-        return [_negative_fact_e2_missing_parser_library(worktree_path)]
-    if scenario.error_type == "cannot_find_header":
-        return [_negative_fact_e1_missing_parser_include(worktree_path)]
-    if scenario.error_type == "unknown_type_name":
-        return [_negative_fact_e3_missing_typedef(worktree_path, parsed_failure)]
-    return []
+    return [
+        fact
+        for fact in _negative_fact_candidates(scenario, parsed_failure, worktree_path)
+        if fact.get("result") != "present"
+    ]
 
 
 def _grep_fixed(pattern: str, paths: list[Path], *, cwd: Path) -> tuple[str, str]:
@@ -1462,7 +1597,7 @@ def _rg_fixed(pattern: str, paths: list[Path], *, cwd: Path) -> tuple[str, str]:
 
 
 def _fact_confidence(result: str, default: str = "high") -> str:
-    return default if result != "unavailable" else "medium"
+    return default if result != "unavailable" else "low"
 
 
 def _negative_fact_e1_missing_parser_include(worktree_path: Path) -> dict[str, Any]:
@@ -1472,12 +1607,17 @@ def _negative_fact_e1_missing_parser_include(worktree_path: Path) -> dict[str, A
         cwd=worktree_path,
     )
     return {
-        "check": "active include dirs / CMake INCLUDE_DIRECTORIES contains src/parser/include",
+        "check": "root CMakeLists.txt INCLUDE_DIRECTORIES entry contains src/parser/include",
         "result": result,
         "scope": "build_config",
         "confidence": _fact_confidence(result),
         "source": "CMake grep",
-        "implication": "the header include directory is not available to this target",
+        "implication": _negative_implication(
+            result,
+            "the parser include directory is absent from the CMake config",
+            "the include-dir check could not be executed; presence undetermined",
+            "the include directory IS present (not a negative fact)",
+        ),
         "command": command,
     }
 
@@ -1494,7 +1634,12 @@ def _negative_fact_e2_missing_parser_library(worktree_path: Path) -> dict[str, A
         "scope": "build_config",
         "confidence": _fact_confidence(result),
         "source": "CMake grep",
-        "implication": "the tool target is missing the parser library dependency",
+        "implication": _negative_implication(
+            result,
+            "the tool target is missing the parser library dependency",
+            "the link-dependency check could not be executed; presence undetermined",
+            "the parser library dependency IS present (not a negative fact)",
+        ),
         "command": command,
     }
 
@@ -1508,16 +1653,34 @@ def _negative_fact_e3_missing_typedef(
         [Path("include"), Path("src")],
         cwd=worktree_path,
     )
-    type_name = (parsed_failure.primary_candidate or {}).get("type_name") or "pkgmgrinfo_appinfo_h"
     return {
         "check": "grep -R 'typedef void *pkgmgrinfo_appinfo_h;' include/ src/",
         "result": result,
         "scope": "source_code",
         "confidence": _fact_confidence(result),
         "source": "ripgrep",
-        "implication": f"the typedef definition is absent from the mutated source tree for {type_name}",
+        "implication": _negative_implication(
+            result,
+            "the typedef definition is absent from the mutated source tree",
+            "the typedef lookup could not be executed; presence undetermined",
+            "the typedef IS present (not a negative fact)",
+        ),
         "command": command,
     }
+
+
+def build_target_source_instruction(packet: dict[str, Any]) -> str | None:
+    """Render the hard prompt constraint for exact target-source context."""
+
+    excerpt = packet.get("target_source_excerpt") or {}
+    if excerpt.get("status") != "ok":
+        return None
+    return (
+        f"Here is the exact current content of {excerpt['repair_target_file']} "
+        f"(the file you must edit), lines {excerpt['start_line']}-{excerpt['end_line']}. "
+        "Line numbers are labels only; do not include them in the diff. "
+        "Your unified diff context lines MUST match this content byte-for-byte."
+    )
 
 
 def build_llm_prompt(evidence: EvidenceCollectionResult, attempt_index: int) -> tuple[str, str]:
@@ -1532,6 +1695,8 @@ def build_llm_prompt(evidence: EvidenceCollectionResult, attempt_index: int) -> 
             "instruction": "Generate a minimal unified diff that fixes the compile failure.",
             "attempt_index": attempt_index,
             "max_patch_lines": MAX_PATCH_LINES,
+            "target_source_instruction": build_target_source_instruction(evidence.packet),
+            "target_source_excerpt": (evidence.packet.get("target_source_excerpt") or {}).get("content_with_line_numbers"),
             "evidence_packet": evidence.packet,
         },
         ensure_ascii=False,
@@ -1600,7 +1765,8 @@ def build_variant_prompt(
     else:
         packet.pop("negative_facts", None)
 
-    evidence_packet_tokens = estimate_json_tokens(packet)
+    refresh_packet_token_metadata(packet)
+    evidence_packet_tokens = int(packet.get("collection_metadata", {}).get("total_tokens_estimate") or 0)
     metadata.update(
         {
             "include_negative_facts": bool(variant_config.get("include_negative_facts")),
@@ -1615,6 +1781,8 @@ def build_variant_prompt(
         "experiment": "S0-A Part 2 EvidencePacket A/B",
         "scenario": safe_asdict(scenario),
         "max_patch_lines": MAX_PATCH_LINES,
+        "target_source_instruction": build_target_source_instruction(packet),
+        "target_source_excerpt": (packet.get("target_source_excerpt") or {}).get("content_with_line_numbers"),
         "evidence_packet": packet,
     }
     return system, json.dumps(user_payload, ensure_ascii=False, indent=2, sort_keys=True), metadata
@@ -1730,7 +1898,7 @@ def apply_patch_to_worktree(patch_text: str, worktree_path: Path, gate: SideEffe
     patch_file.write_text(patch_text)
     started = time.perf_counter()
     proc = subprocess.run(
-        ["git", "apply", "--index", str(patch_file)],
+        ["git", "apply", str(patch_file)],
         cwd=worktree_path,
         text=True,
         stdout=subprocess.PIPE,
@@ -1738,7 +1906,7 @@ def apply_patch_to_worktree(patch_text: str, worktree_path: Path, gate: SideEffe
         check=False,
     )
     return CommandResult(
-        command=["git", "apply", "--index", str(patch_file)],
+        command=["git", "apply", str(patch_file)],
         cwd=worktree_path,
         exit_code=proc.returncode,
         duration_sec=time.perf_counter() - started,
@@ -1802,7 +1970,7 @@ def dual_apply_patch(
         worktree_path,
         gate,
         mode="strict",
-        extra_args=["--index"],
+        extra_args=[],
         patch_file=PART2_PATCH_ROOT / f"{sample_id}.strict.patch",
     )
     strict_status = "PASS" if strict_result.exit_code == 0 else "FAIL"
@@ -1819,7 +1987,7 @@ def dual_apply_patch(
         worktree_path,
         gate,
         mode="fuzzy",
-        extra_args=["--3way", "--index"],
+        extra_args=["--3way"],
         patch_file=PART2_PATCH_ROOT / f"{sample_id}.fuzzy.patch",
     )
     fuzzy_status = "PASS" if fuzzy_result.exit_code == 0 else "FAIL"
@@ -2371,7 +2539,28 @@ def prepare_part2_scenario_context(
         evidence = collect_evidence_packet(scenario, worktree_path, parsed_failure, modules, gate)
         negative_facts = collect_negative_facts(scenario, parsed_failure, worktree_path)
         evidence.packet["negative_facts"] = negative_facts
-        refresh_packet_token_metadata(evidence.packet)
+        if not negative_facts:
+            degraded_reason = "no_negative_facts_after_present_filter"
+            evidence.degraded_reasons.append(degraded_reason)
+            append_degraded_reason(evidence.packet, degraded_reason)
+        final_raw_status = validate_final_evidence_packet(evidence, modules)
+        if final_raw_status.get("status") != "allowed":
+            context.update(
+                {
+                    "status": "raw_data_blocked",
+                    "error": {
+                        "reason": final_raw_status.get("reason", "raw_data_detector_blocked"),
+                        "raw_data_status": final_raw_status,
+                    },
+                    "evidence_summary": {
+                        "evidence_id": evidence.packet.get("evidence_id"),
+                        "raw_data_status": final_raw_status,
+                        "estimated_tokens": evidence.packet.get("collection_metadata", {}).get("total_tokens_estimate"),
+                        "negative_facts_count": len(negative_facts),
+                    },
+                }
+            )
+            return context
         context.update(
             {
                 "status": "ok",
@@ -2379,7 +2568,7 @@ def prepare_part2_scenario_context(
                 "negative_facts": negative_facts,
                 "evidence_summary": {
                     "evidence_id": evidence.packet.get("evidence_id"),
-                    "raw_data_status": evidence.raw_data_status,
+                    "raw_data_status": final_raw_status,
                     "reference_count": evidence.clangd_facts.get("reference_count"),
                     "definition": evidence.clangd_facts.get("definition"),
                     "estimated_tokens": evidence.packet.get("collection_metadata", {}).get("total_tokens_estimate"),
@@ -2708,8 +2897,8 @@ def render_part2_review_form(results: dict[str, Any]) -> str:
                 "```",
                 "",
                 "**Build pipeline**:",
-                f"- strict apply (`git apply --index`): {strict.get('status', 'N/A')} ({strict_msg})",
-                f"- fuzzy apply (`git apply --3way --index`): {fuzzy.get('status', 'N/A')} ({fuzzy_msg})",
+                f"- strict apply (`git apply`): {strict.get('status', 'N/A')} ({strict_msg})",
+                f"- fuzzy apply (`git apply --3way`): {fuzzy.get('status', 'N/A')} ({fuzzy_msg})",
                 f"- final_applied: {apply_result.get('final_applied', 'none')}",
                 f"- rebuild: {rebuild.get('status', 'N/A')}",
                 "",
@@ -2869,6 +3058,8 @@ def _local_failure_scenario(scenario_id: str) -> ErrorScenario:
         source_file=Path("CMakeLists.txt"),
         mutation_kind="mock",
         mutation_target="mock",
+        repair_target_file=Path("CMakeLists.txt"),
+        repair_anchor_keyword="PROJECT",
         expected_primary_hint="mock",
         notes=f"{scenario_id} pure-local failure-path test",
     )
@@ -2967,7 +3158,7 @@ def test_apply_conflict() -> dict[str, Any]:
     return {
         "test": "test_apply_conflict",
         "status": "PASS",
-        "setup": "tmp git repo with uncommitted file change; real validate_patch + real git apply --index",
+        "setup": "tmp git repo with conflicting file change; real validate_patch + real git apply",
         "real_llm_calls": 0,
         "assertions": {
             "validation.accepted": validation.accepted,
@@ -3148,6 +3339,8 @@ def test_bounded_repair_limit() -> dict[str, Any]:
             source_file=Path("CMakeLists.txt"),
             mutation_kind="mock",
             mutation_target="mock",
+            repair_target_file=Path("CMakeLists.txt"),
+            repair_anchor_keyword="PROJECT",
             expected_primary_hint="mock",
             notes="test_bounded_repair_limit half-real test",
         )
@@ -3407,7 +3600,27 @@ def _prompt_payload_without_negative_facts(prompt: str) -> dict[str, Any]:
     packet = payload.get("evidence_packet")
     if isinstance(packet, dict):
         packet.pop("negative_facts", None)
+        refresh_packet_token_metadata(packet)
     return payload
+
+
+def _normalize_prompt_payload_for_ab_compare(payload: dict[str, Any]) -> dict[str, Any]:
+    """Remove non-semantic packet budget fields before A/B prompt purity compare."""
+
+    normalized = json.loads(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    packet = normalized.get("evidence_packet")
+    if isinstance(packet, dict):
+        metadata = packet.get("collection_metadata")
+        if isinstance(metadata, dict):
+            for key in (
+                "total_tokens_estimate",
+                "packet_char_count",
+                "budget_pass",
+                "budget_tokens",
+                "token_estimator",
+            ):
+                metadata.pop(key, None)
+    return normalized
 
 
 def test_negative_facts_purity() -> dict[str, Any]:
@@ -3417,6 +3630,7 @@ def test_negative_facts_purity() -> dict[str, Any]:
 
     gate = SideEffectGate(enabled=True, reason="test_negative_facts_purity local fixtures")
     scenario_facts: dict[str, list[dict[str, Any]]] = {}
+    scenario_candidates: dict[str, list[dict[str, Any]]] = {}
     violations: list[dict[str, Any]] = []
     parsed_by_scenario: dict[str, ParsedBuildFailure] = {}
 
@@ -3430,8 +3644,33 @@ def test_negative_facts_purity() -> dict[str, Any]:
                 worktree_path / "negative_fact_purity.log",
             )
             parsed_by_scenario[scenario.scenario_id] = parsed_failure
+            candidates = _negative_fact_candidates(scenario, parsed_failure, worktree_path)
+            scenario_candidates[scenario.scenario_id] = candidates
             facts = collect_negative_facts(scenario, parsed_failure, worktree_path)
             scenario_facts[scenario.scenario_id] = facts
+            expected_result = EXPECTED_NEGATIVE_RESULT.get(scenario.scenario_id)
+            if expected_result and not any(fact.get("result") == expected_result for fact in facts):
+                violations.append(
+                    {
+                        "scenario_id": scenario.scenario_id,
+                        "type": "expected_negative_result_missing",
+                        "expected_result": expected_result,
+                        "actual_results": [fact.get("result") for fact in facts],
+                    }
+                )
+            present_candidates = [
+                candidate for candidate in candidates
+                if candidate.get("result") == "present"
+            ]
+            if present_candidates:
+                violations.append(
+                    {
+                        "scenario_id": scenario.scenario_id,
+                        "type": "present_candidate_after_mutation",
+                        "candidate_count": len(present_candidates),
+                        "candidates": present_candidates,
+                    }
+                )
             for violation in validate_negative_facts_purity(facts):
                 violations.append({"scenario_id": scenario.scenario_id, **violation})
 
@@ -3464,7 +3703,10 @@ def test_negative_facts_purity() -> dict[str, Any]:
 
     a_without_negative = _prompt_payload_without_negative_facts(prompts["A"])
     b_without_negative = _prompt_payload_without_negative_facts(prompts["B"])
-    ab_diff_only_negative_facts = a_without_negative == b_without_negative
+    ab_diff_only_negative_facts = (
+        _normalize_prompt_payload_for_ab_compare(a_without_negative)
+        == _normalize_prompt_payload_for_ab_compare(b_without_negative)
+    )
     if not ab_diff_only_negative_facts:
         violations.append({"type": "ab_prompt_diff_not_limited_to_negative_facts"})
 
@@ -3472,6 +3714,8 @@ def test_negative_facts_purity() -> dict[str, Any]:
         "test": "test_negative_facts_purity",
         "status": "PASS" if not violations else "FAIL",
         "scenario_facts": scenario_facts,
+        "scenario_candidates": scenario_candidates,
+        "expected_negative_result": EXPECTED_NEGATIVE_RESULT,
         "system_prompt_byte_identical": system_prompt_byte_identical,
         "ab_prompt_diff_only_negative_facts": ab_diff_only_negative_facts,
         "system_prompts": system_prompts,
@@ -3527,7 +3771,7 @@ def describe_framework() -> dict[str, Any]:
             {
                 "test": "test_apply_conflict",
                 "status": "implemented_run_with_--mode run-failure-path-tests",
-                "expected": "real git apply --index conflict returns non-zero",
+                "expected": "real git apply conflict returns non-zero",
             },
             {
                 "test": "test_rebuild_fails",
