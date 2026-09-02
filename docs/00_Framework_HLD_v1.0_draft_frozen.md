@@ -1,7 +1,7 @@
 # 00 — Multi-Agent Framework 高层设计（HLD）
 
 **版本**: v1.0-draft-frozen（= v0.11 + 第十一轮三方 freeze 勘误）
-**状态**: **DRAFT FREEZE**——第十一轮复审三方一致 GO（Kimi / Claude Code / Codex），十一轮累计 66+ 实质 issue 全部闭环处置。本冻结为 draft freeze：架构与关键路径语义不再变更；contract **v1.0 正式定稿**仍须按 D10/G6 三条件（reference Compiler Agent 真实消费 + 五类 fixture + 兼容矩阵）达成后宣布。冻结后的任何修改须重走三方评审
+**状态**: **DRAFT FREEZE**（含勘误 E-01，见附录 A15）——第十一轮复审三方一致 GO（Kimi / Claude Code / Codex），十一轮累计 66+ 实质 issue 全部闭环处置。本冻结为 draft freeze：架构与关键路径语义不再变更；contract **v1.0 正式定稿**仍须按 D10/G6 三条件（reference Compiler Agent 真实消费 + 五类 fixture + 兼容矩阵）达成后宣布。冻结后的任何修改须重走三方评审
 **读者**: 框架开发（Codex）、cross-reviewer（Kimi / Codex / Claude Code）、后续业务 Agent 开发者
 **关联文档**: 01_Contract_Spec、02–06_Agent_Design_Guide、07_Conformance_and_Onboarding、08_Codex_Dev_Guide、09_Phased_Dev_Plan、docs/review/ 下 v0.1–v0.11 全部十一轮处置表（v0.11 处置表为 freeze 勘误依据）
 
@@ -492,3 +492,6 @@ DSL property/fuzz（随机图 → 校验器判定性质：可达环必有 budget
 4. **效应幂等**：effect 记录六态迁移/查找矩阵与版本化；effect_call_id 唯一性细则与 sys.invalid_result 归类；effect_class 注册与能力声明（probe/replay_safe）契约；恢复协议逐支细则。
 5. **安全接口**：control-plane 命令集（数据面枚举、审批/核销、裁决、correction）；受限扩展 adapter 的操作描述与凭据原语契约；数据密级标注与传播规则。
 6. **conformance**：§11.3 全部测试类别的用例级定义与判定标准（07 引用）。
+
+## 17. 附录 A15：勘误记录（冻结后经三方评审通道生效）
+- **E-01（HLD-Q1 → 01 V-13b）**：§4.2.6 校验规则集追加——release-approval 型 hitl 须存在支配它的 ReleasePlan 生产节点（按 Agent 注册 produces 声明判定，支配链最近者，同深歧义拒绝加载）。缺陷由 01 首轮评审（Claude Code）登记为 HLD-Q1；形式化定义在 01_Contract_Spec §1.3 V-13b；**01 第二轮复审中三方对规则与生效程序双表态一致 GO，勘误生效**。本条为规则集的静态加严，不触碰任何运行时语义。单一事实源：规则精确文本以 01 V-13b 为准。
