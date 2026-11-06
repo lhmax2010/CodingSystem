@@ -1,0 +1,948 @@
+# 01 — Contract Specification（契约规格）
+
+**版本**: v0.20 Draft（第十九轮三方复审 Kimi GO / Claude Code NO-GO / Codex NO-GO 后修订版；故障归因按三方一致意见转为实现策略，待第二十轮复审）
+**状态**: 复审中
+**上游依据**: docs/00_Framework_HLD_v1.0_draft_frozen.md（下称 HLD）。本文档只精确化 HLD 冻结语义，不引入新架构决策；与 HLD 冲突以 HLD 为准并作为本文档缺陷处理。**例外一处**：V-13b 为 HLD 勘误 HLD-Q1 的形式化（首轮 Claude Code 登记、三方处置表确认走勘误通道），**已于第二轮三方一致批准生效**（规则与程序双表态全 GO），并回写 HLD 附录 A15 勘误注记。
+**关联**: docs/review/ 下 01 系十一轮处置表（57/47/34/21/18/9/9/12/8/10/17/10/7/6/5/6/8/12/8 条逐条处置；第十一轮与 HLD v2.0 首轮、第十二轮与 HLD v2.2、第十三轮与 HLD v2.3、第十四轮与 HLD v2.4、第十五轮与 HLD v2.5、第十六轮与 HLD v2.6、第十七轮与 HLD v2.7、第十八轮与 HLD v2.8、第十九轮与 HLD v2.9 合并评审，处置表 01_v0.11_review_disposition.md 至 01_v0.19_review_disposition.md）。**与 HLD v2.x 的关系**：本版上游仍为 v1.0 冻结版 + E-01；HLD v2.x 的范围扩展与勘误 E-02/E-03 在其三方评审 GO 后按 HLD 附录 B 第 7 组同步扩展，本版不预先引入（第十二轮三家所列同步项均已登记于 HLD v2.3 附录 B 第 7 组）。本版为**自足文本**：不再以"同 v0.1/v0.2"外引承载任何规范性内容。
+
+---
+
+## 0. 约定、标识符与版本
+
+### 0.1 canonical_json（唯一算法）
+1. 输入为 pydantic v2 模型经 `model_dump(mode="json")` 的产物；仅允许类型：object / array / string / **integer** / bool / null。
+2. **禁止浮点参与 digest**：digest 序列化器对输入**递归校验**（含 config/ext/effect params 等自由字典的嵌套层），遇 float 即拒绝（`CanonicalizationError`）；比率类以**定点字符串**承载，格式由字段声明 scale 并以 pydantic pattern 强制（缺省 2 位小数：`^-?\d+\.\d{2}$`）；datetime 唯一字面 = UTC、毫秒恒 3 位、`Z` 后缀（`2026-08-31T12:00:00.000Z`）；**StrEnum 取字符串值、IntEnum 取整数值**（DataClass 即 IntEnum 例——§5.3 golden vector 的 allowed_max:1 即其专属向量）；模型内 frozenset/set 由序列化器输出为**排序列表**；整数声明界 |n|<2^53（越界拒绝）。非 digest 运行时消息（如 HandoffResult.metrics）允许 float，此类字段永不参与 digest。
+3. 编码：UTF-8；字符串先 NFC 后使用，**NFC 后键碰撞即拒绝**；非 ASCII 直出；**逐字符唯一转义表**：`"`→`\"`、`\`→`\\`、U+0008→`\b`、U+0009→`\t`、U+000A→`\n`、U+000C→`\f`、U+000D→`\r`，其余 <U+0020 控制字符→`\u00xx`（hex 小写）；此外一律不转义（golden vectors 覆盖换行/退格/NUL/引号/反斜杠）；键按 UTF-8 字节序升序、无空白、整数十进制无前导零（`-0` 非法）。
+4. `digest(obj) = "sha256:" + hex_lower(sha256(canonical_json_bytes(obj)))`；凡本文"digest"均指此形式（含前缀的完整字符串）。
+5. contracts 包交付 golden vectors（嵌套/Unicode/边界整数/定点字符串各≥1）作为跨实现一致性测试。
+
+### 0.2 标识符总表（格式 | 生成方 | 唯一性域）
+
+| 标识符 | 格式 | 生成方 | 唯一性域 |
+|--------|------|--------|---------|
+| run_id | `RUN-`+ulid | 编排（create_run 事务） | 全局 |
+| task_id | `<PREFIX>-`+≥6位十进制（HLD 示例 6 位为下限，耗尽扩位） | 编排（dispatch 事务；序号全局单调） | 全局 |
+| dispatch_id / activation_id / outbox_id / lease_id | ulid | 编排（对应事务内） | 全局 |
+| decision_id / adjudication_id / correction_id | ulid | **编排进程**（对应命令事务内生成，请求载荷不含、响应返回——与 token_id 同一单写者理由） | 全局 |
+| gate_instance_id | ulid | 编排（gate 等待项登记事务） | 全局 |
+| candidate_id | ulid | 编排（series_candidate_submit 事务；request_id 幂等——同载荷重放返回同 id） | 全局（每 task 至多一个**活跃** candidate） |
+| series_id | `SER-`+ulid | 编排（§3.3 完成事务内签发；candidate 阶段为预留值） | run 内 |
+| token_id | ulid + `-` + 32 hex（128bit CSPRNG） | **编排进程**（decision_submit 事务内随授权记录生成，响应返回供 CLI 展示——Approval 服务不产 ID，与单写者模型一致） | 全局（高熵，HLD §3） |
+| snapshot_id | `SNAP-` + digest(manifest) 的 hex 前 32 字符（接口引用一律以 snapshot_id 为键；生成事务对 snapshot_id 施唯一约束，冲突时前缀逐次 +8 hex 直至唯一——确定性扩位规则；manifest 记录含全量 digest 供审计） | 编排 | 全局 |
+| request_id | 调用方任意 ≤64 字符 | Skill 调用方 | (bearer principal, endpoint) 内幂等，保留 7 天；同 id 异载荷 → E-SKILL-IDEM-MISMATCH(422) |
+| pipeline_id | 文件名 stem `[a-z0-9_]+` | 部署配置 | 部署内 |
+| broker_epoch | 整数，`1 ≤ e < 2^53` | 编排（broker_hello 事务；计数器持久化于 Ledger，按 broker 进程实例分配，§2.2d） | 全局单调、不回绕 |
+| control-plane request_id | ulid | 各命令调用方（编排出向在 DispatchReceipt 事务①生成） | 所属幂等域（§5.1） |
+
+ulid = 26 字符 Crockford Base32。碰撞策略：ulid 类由生成方保证单调；序号类溢出扩位不回绕。task_prefix：2–4 大写字母、注册期全局唯一（V-02 校验）。
+
+### 0.3 Contract 版本
+`contract_version = "1.0.0.dev9"`（PEP 440 合法；各文档草案展示号与包版映射关系记于 A3 变更表）。draft 期破坏性修改递增 devN；v1.0.0 按 HLD D10/G6 宣布。`contract_requires` 按 PEP 440 specifier 匹配 contracts 包版本；draft 期业务侧锁精确版本（`==1.0.0.devN`，逐版显式升级）。`dsl_version` 当前 1。
+
+### 0.4 模型总纲
+全部模型 `ConfigDict(extra="forbid", frozen=True)`；**唯一豁免**：各 Report 类型体允许扩展键，必须置于 `ext: dict[str, JsonValue]` 单一容器内且键带 `<org>__` 前缀——除 ext 外仍 forbid。本文出现的每个类型名在正文或 §7 附录 A0 有完整定义，无匿名 schema。
+
+---
+
+## 1. Pipeline DSL v1 与静态校验（HLD §4.2）
+
+### 1.1 文件 schema
+
+```python
+class GateType(StrEnum): hitl="hitl"; threshold="threshold"
+RetryOutcome = Literal["sys.crash","sys.error","sys.timeout"]
+class RetrySpec(BaseModel): on: list[RetryOutcome]; max: int = Field(ge=1)
+class LoopBudget(BaseModel): max_rounds: int = Field(ge=1); max_wall_clock_min: int = Field(ge=1)
+class RunBudget(BaseModel): max_wall_clock_min: int = Field(ge=1)
+class LLMBudget(BaseModel): max_tokens: int = Field(ge=1); on_exceed: Literal["truncate","error"]="truncate"
+
+class NodeSpec(BaseModel):
+    agent_type: str | None = None; mode: str | None = None
+    gate: GateType | None = None
+    metric: str | None = None            # threshold: "<producer_node>.<field>"（§1.5）
+    op: Literal["<=", ">=", "<", ">", "=="] | None = None
+    value: str | None = None             # 定点字符串；加载器对 value 位置做 schema 感知预处理：
+                                         # YAML 十进制字面量按**原文词素**无损转定点字符串（按声明 scale 补零，
+                                         # 精度超 scale 或非十进制词素拒绝），字符串原样校验 pattern
+    ttl_min: int | None = Field(default=None, ge=1)   # 仅 hitl；缺省无 TTL（HLD §4.4）
+    broker: Literal["release"] | None = None
+    terminal: bool = False
+    success_on: list[str] | None = None
+    retry: RetrySpec | None = None
+    llm_budget: LLMBudget | None = None
+    config: dict[str, JsonValue] = {}
+# 字段适用矩阵（V-01 强制）：agent 型可用 mode/retry/llm_budget/config/terminal/success_on；
+# threshold 型仅 gate/metric/op/value；hitl 型仅 gate/ttl_min；broker 型仅 broker。越界字段拒绝。
+
+class LoopEdge(BaseModel): from_: str = Field(alias="from"); to: str      # wire 名 from/to
+class LoopSpec(BaseModel): id: str; edges: list[LoopEdge] = Field(min_length=1); budget: LoopBudget
+class JoinSpec(BaseModel): id: str; wait_for: list[str] = Field(min_length=2); timeout_min: int | None = None; to: str
+class RouteSpec(BaseModel):
+    from_: str = Field(alias="from"); on: str
+    to: list[str] = Field(min_length=1)
+    # wire 兼容（HLD §4.2.1 旗舰原文强制通过）：加载器接受标量 to 并规范化为单元素列表；
+    # 模型内部唯一形态为列表。**加载器定案（显式 resolution 表，不以"YAML 1.2 core"名义指代）**：
+    # ①parse+compose 到节点树（**不构造**，标量原词素在节点层可得）；anchor/alias/merge 键与自定义 tag
+    #   在 parse/event 阶段即拒绝（compose 前，引用信息未丢失时）；mapping 构造前对原键及 NFC 后键做
+    #   重复检测，重复即拒绝；②按显式表做 tag 解析——**仅作用于 plain（无引号、无显式 tag）scalar**，
+    #   quoted/block scalar 恒为字符串（`terminal: "true"` 是字符串、strict bool 字段拒绝，实现无自由度）：
+    #   bool 仅 `true|false`；int 仅 `^-?(0|[1-9][0-9]*)$`（前导零如 `010` 作字符串）；null 仅 `null|~|空`；
+    #   其余 plain scalar（含 on/off/yes/no/y/n、1e3、八进制形）一律字符串；
+    # ③value 等定点位置在**节点层截取原词素**校验并 scale 补零转定点字符串（非十进制词素拒绝）；
+    # ④构造 + 标量 to 列表化；⑤pydantic strict 校验。CF-DSL-FLAG 以旗舰与 compiler_bench_only
+    # **原文字节**（后者规范文本见附录 A4）加载断言（`on:` 必得字符串键、`5.0` 必得 "5.00"）。
+class PipelineSpec(BaseModel):
+    pipeline: str; dsl_version: Literal[1]
+    nodes: dict[str, NodeSpec]; entry: str
+    loops: list[LoopSpec] = []; joins: list[JoinSpec] = []
+    routes: list[RouteSpec]; default_route: Literal["fail_safe"]
+    run_budget: RunBudget; snapshot_policy: Literal["pin_at_start"] = "pin_at_start"
+```
+`pipeline_digest = digest(PipelineSpec)`。`to` 成员语法：节点名 | `fail_safe` | `join:<id>`；fan-out = 单条 route 的多元素 to（V-04）。
+
+### 1.2 保留名与固定语义（自足文本）
+- 保留节点：`fail_safe`；保留命名空间：`sys.*`、裸名 `fail_safe`、前缀 `join:`。
+- `SysOutcome = Literal["sys.crash","sys.timeout","sys.invalid_result","sys.error"]`（封闭）；**两个 JSON 类型（R9-04）**：`JsonValue = None|bool|int|str|list[JsonValue]|dict[str,JsonValue]`（**digest 域**，禁 float）；`WireJson = None|bool|int|float|str|list[WireJson]|dict[str,WireJson]`（**wire 载荷域**，允许 float）。CommandEnvelope.payload 与各 Skill 载荷为 WireJson；每条命令的幂等摘要经**投影**到 JsonValue 后计算（投影规则随命令注册表：缺省 = 全载荷；task_complete 投影 = HandoffResult 去 metrics 字段——metrics 永不参与 digest，§0.1）。
+- gate outcome 封闭枚举：hitl → {approved, rejected, gate_expired}；threshold → {pass, fail}。
+- `broker: release` 节点 outcome 集固定 {released, release_failed}，无出边，终态经 §2.2b ledger 级固定映射。
+
+### 1.3 静态校验规则（违规 → `PipelineValidationError(rule_id, locus)`）
+
+| ID | 规则（依据） |
+|----|--------------|
+| V-00 | **引用有效性**：route.from_ ∈ nodes；route.to 各成员 ∈ nodes ∪ {fail_safe} ∪ {join:<已声明 id>}；join.to ∈ nodes；LoopEdge 两端 ∈ nodes 且该边对应至少一条已声明 route；threshold metric 的 producer_node ∈ nodes；join/loop id 各自唯一；wait_for/edges/to 元素无重复（HLD §4.2.6 首条） |
+| V-01 | 节点三型互斥 + **字段适用矩阵**（§1.1 注）；threshold 必填 metric/op/value（§4.2.2） |
+| V-02 | **注册与准入**：agent_type 已注册、status_set 非空、task_prefix 格式合法且全局唯一、contract_requires 与 contracts 包版本兼容、conformance attestation 有效且**三重绑定**（制品 digest ∈ execution manifest + contract_version + 套件版本，HLD §11.3——R2-02）——未注册 agent_type 在 V-05 之前即拒（重写恢复项，CF-DSL-02 覆盖） |
+| V-03 | 节点名不占保留名/命名空间/`join:`前缀；entry 存在唯一；无不可达节点 |
+| V-04 | **路由唯一性**：同 (from_, on) 至多一条 route（fan-out 经单条多元素 to 表达，多条即拒绝） |
+| V-05 | route.on ∈（from 节点 status 全集 ∪ 其 gate outcome 集 ∪ sys.*） |
+| V-06 | 穷尽性：每节点业务 status 逐条有路由或被 default_route 覆盖 |
+| V-07 | 每个可达环至少含一条某 LoopSpec 声明边（等价判定：移除全部声明环边后图无环）；每条声明边隶属唯一 LoopSpec |
+| V-08 | join.wait_for ≡ { r.from_ : "join:"+id ∈ r.to }（集合相等，按 to 成员判定） |
+| V-09 | **每 activation 单送达（语义性质 + 保守判定）**：性质 = join 来源节点 s 每 activation 最大 dispatch 数 ≤1。判定：s 的多条入边合法当且仅当静态可证两两互斥（源自同一节点不同 outcome 的分支且中途未再汇合，可传递）；互斥性不可静态判定即拒绝。同节点互斥 outcome 多路指向同一 join 合法；互斥入边汇聚于中间节点 s 再入 join 亦合法（CS-05 反例形态） |
+| V-10 | join.to 非 join（禁链式）；多源 join 来源由同一显式 fan-out 的分支派生、来源集在分支间构成划分；共同支配不得替代共同 fan-out |
+| V-11 | **共同到达性**：对每个 join 来源 s，从其 scope fan-out 到 s 的路径上，每个节点的每个 outcome 分支须满足三者之一——仍在可达 s 的路径上、到达 Run 终局（fail_safe/terminal/release）、或经声明环边回流（受 V-12 双约束）；违者拒绝（HLD §4.2.6） |
+| V-12 | **环边双约束**：①回流路径必然重经该 join 的共同 fan-out（重派全部来源分区）；②重经自身 activation 的共同 fan-out 之前不得先重经任何祖先 activation 的共同 fan-out；违任一即拒（HLD §4.2.6 条件(iii)） |
+| V-13 | release 路径规则（照 HLD §4.2.5）：必经 hitl；release 可达路径上的 hitl approved 出边直达 release；release 无出边 |
+| V-13b | **[HLD 勘误 HLD-Q1]** release-approval 型 hitl 须存在支配它的 **ReleasePlan 生产节点**（按 §2.3 produces 声明判定：produces 含 "release_plan"）；多候选生产者 → 取支配链上最近者，歧义（同深多者）拒绝 |
+| V-14 | terminal 节点必有非空 success_on ⊆ status 全集，且**无出边**（非 success outcome 固定映射 fail_safe，编译期落表） |
+| V-15 | hard-required（ProducerSelector 解析）与 threshold metric 生产节点：存在、可解析唯一、支配消费节点、消费同 series 结果；metric 的 field 须在该生产节点 produces 全部类型体的 gateable 字段中**唯一匹配**，歧义拒绝 |
+| V-16 | retry.on ⊆ **RetryOutcome = {sys.crash, sys.error, sys.timeout}**（封闭枚举；`sys.invalid_result` 不可重试——HLD §4.3.2 字面；CF-DSL-16 反例固定为 invalid_result） |
+| V-17 | hitl 分型静态判定：release 可达路径上的 hitl 为 release-approval 型、其余 plain-decision 型；分型进编译产物供运行时选择审批协议（HLD §4.4） |
+
+### 1.4 编译产物
+`CompiledPipeline`（内部 schema，进 execution manifest 的是其 digest 而非本体）：节点表（分型/hitl 型别/terminal 映射）、路由表、环表、join 表（scope fan-out、来源划分、超时配置）、支配缓存、threshold 解析表。
+
+### 1.5 threshold 指标解析（唯一数据源）
+`metric = "<producer_node>.<field>"`：field 解析到该生产节点注册 Report 类型体的**顶层定点字符串字段**（§2.4 各 Report 的可门禁字段以 `# gateable` 注明）；比较按 Decimal。缺失字段 / 非法值 / 生产节点本轮无产出 → outcome=fail（fail-closed）。旗舰示例 `benchmark.regression_pct` 解析到 BenchReport.regression_pct（顶层聚合字段，§2.4）。
+
+---
+
+## 2. 状态机与消息（HLD §4.3/§6/§8.2-8.3）
+
+### 2.1 Run 状态机命令/guard 表
+
+| # | 命令（发起者） | 前置 guard | 附加 guard / 事务内容 | 目标 |
+|---|----------------|-----------|----------------------|------|
+| C-01 | create_run（Skill，**异步**） | — | pipeline 校验通过；水位达标；响应仅 {run_id, state}，snapshot 经 GET 获取（R2-07 定案） | created |
+| C-02 | snapshot_pin（编排） | created | 成功：写 snapshot/execution manifest | awaiting_patch |
+| C-03 | snapshot_pin 失败 | created | — | closed(snapshot_error) |
+| C-04 | submit_patch（Skill） | awaiting_patch | 可应用；单 Run 一次；**初始 series 单事务**（§3.3a：按 §0.2 格式签发初始 series_id、lineage(parent=None,base=snapshot)、tree_digest、current 推进）；request_id 重放返回同 series_id | queued（run_budget 起算） |
+| C-05 | awaiting_patch TTL | awaiting_patch | 默认 24h | closed(cancelled) |
+| C-06 | slot_acquire（编排） | queued | FIFO 队首且槽空闲 | running |
+| C-07 | gate_wait_only（编排） | running | 仅剩 gate 等待、无可运行工作 | paused（释放槽） |
+| C-08a | gate_resolve（outbox 消费） | paused | **outbox_id 未消费**（inbox CAS pending→delivered）∧ gate 已 resolved 且其 decision_id/outcome 与 outbox 项一致；同事务写 inbox receipt + durable dispatch 下游；**不再改 gate**——gate 的 waiting→resolved CAS 只在决定事务（decision_submit，§5.1）或 C-08c 中发生一次（R11 C-01） | queued（resume 入 FIFO） |
+| C-08b | gate_resolve（outbox 消费） | running | 同 C-08a；**Run 不迁移**，同事务 durable dispatch 下游 | running |
+| C-08c | gate_ttl_expire（编排定时） | paused ∨ running | gate CAS waiting→resolved(**gate_expired**，编排合成 outcome，不经 ApprovalDecision）+ 同事务写同形 outbox 项（origin=ttl）；**决定与 TTL 仅一方 CAS 胜出**，败方被 gate 守卫拒绝；outbox 消费沿用 C-08a/b 同一协议 | （经 C-08a/b）queued / running |
+| C-09 | authorization_consume（broker RPC） | （running ∨ publishing）∧ **连接 epoch == 当前 broker epoch ∧ 实例非 retiring ∧ 对应 task `recovery_mode` ∉ {manual_only}**（§2.2d，R16） | 四支见 §2.2a（③仅 running；④需连接 epoch > granted_epoch + 旧执行静默（§2.2d 唯一定义）+ 后续 release_reconcile_report 对账与原子许可） | ①publishing ②closed(按 §2.2b) ③→C-14 ④publishing（不迁移、不重复核销） |
+| C-10 | release_outcome（broker） | publishing ∧ **连接 epoch == 授权 granted_epoch ∧ recovery_state ∈ {none, execution_permitted}** | §2.2b 固定映射；guard 不符 → E-CP-FORBIDDEN（epoch）/ E-CP-ILLEGAL-STATE（recovery_state）+ 审计，Run 不变 | closed(...) |
+| C-10a | release_reconcile_report（broker，仅恢复臂后） | publishing ∧ **连接 epoch == 授权 granted_epoch ∧ recovery_state == reconcile_required** | happened → ledger 级 released 映射；not_happened → 原子许可通过（→ execution_permitted）或同事务 ledger 级 release_failed 映射关闭；indeterminate → recovery_state=indeterminate、记录 | closed(succeeded) / publishing（等待 outcome）/ closed(按 §2.2b) / publishing（走 C-11） |
+| C-11 | 人工裁决 | publishing ∧（强制 probe 后 unknown ∨ 对应 task `recovery_mode = manual_only`，R15） | §2.2c 裁决映射；adjudication_id 幂等、状态 CAS；manual_only 分支下裁决受强制 probe 结果约束（§5.1 特权运维） | closed(...) 或保持 publishing |
+| C-11a | release_probe_report（broker，只探测通道，R12；R13 补驱动与持有者回收） | publishing ∧ （recovery_state == indeterminate ∨ 对应 task recovery_mode == manual_only（R16））∧ 连接 epoch == 当前 epoch ∧ 实例非 retiring ∧ 对应 DispatchReceipt 为 probe 型 | confirmed_happened → released 映射；confirmed_not_happened ∧ granted_epoch 持有者实例静默 → release_failed 映射（(b) pending 序）；confirmed_not_happened 而持有者未静默 → 记录观测、请求该持有者实例 retiring（不授予执行权），静默确认后由周期任务以新 probe_seq / 新 request_id 重新探测，再作负向映射；indeterminate → 记录、下一周期继续；**manual_only 下（任一 recovery_state）只记录为裁决证据、不自动映射终局**，由 C-11 收尾（R16） | closed(...) 或保持 publishing |
+| C-12 | fail_safe_enter（编排） | running | 保留节点：聚合 + FeedbackReport | closed(fail_safe) |
+| C-13 | budget_expire（编排定时） | queued ∨ running | run_budget/loop 预算触顶（口径 §3.4）→ 强制路由 fail_safe（等效 C-12） | closed(fail_safe) |
+| C-14 | administrative_finalize（ledger 级） | 非 closed、非 publishing | HLD §4.3.3（活跃引擎先停）；probe 对账 + ledger 级 FeedbackReport | closed(fail_safe) |
+| C-15a | cancel_close（Skill/运维） | created ∨ awaiting_patch ∨ queued ∨ running ∨ paused | 在飞 worker 终止（§5.1 语义） | closed(cancelled) |
+| C-15b | cancel_pending（Skill/运维） | publishing | 仅 pending_register(kind=cancel)；幂等返回登记态 | publishing（不迁） |
+| C-16 | terminal_success（编排） | running | terminal outcome ∈ success_on | closed(succeeded) |
+
+publishing 期一切改向事件（cancel / 并行 fail_safe / series 更新 / administrative finalize）经 `pending_register{run_id, event: PendingEvent}` 仅登记（判别联合整体提交，§5.1；HLD §8.3）；§3.3 完成事务在 Run=publishing 时 series 相关步骤（推进/失效/退役）整体降级为 pending 记录，结果与 artifact 照常提交。
+
+### 2.2 release 三支与终态映射（ledger 级；HLD §8.3/§4.2.5）
+**(a) 核销三支（C-09）**：①授权有效（未核销未撤销未过期、全绑定字段与当前一致）→ 原子核销 + Run→publishing，授权 granted_epoch := 连接 epoch、recovery_state := none；②授权失效/过期/series 陈旧 → **不核销**，从 running 直接按 (b) 的 release_failed 映射 ledger 级关闭（reason 附 authorization_expired/stale/revoked；即 C-09 目标②）；③D12 digest 不匹配（**仅 running、核销前检测**）→ ResponseError(E-CP-D12-MISMATCH)，授权不动，触发 C-14。**publishing 下 D12 漂移不以错误返回**（HLD §8.3"publishing 是 administrative finalize 的状态级例外——即使 D12 漂移或进程重启，也必须先与 broker 对账或 probe 远端结果"）：任一复核点检出漂移 → 同事务登记 pending(admin_finalize)（恰一次，dedup），**不阻断**恢复臂与对账，事实由该 pending 承载并在关闭时按 (b) 序消费（R11 C-04/C11-03）。
+**④恢复臂（R8-01/R9-01 定案，R11 修订）**：guard = Run=publishing ∧ 授权 consumed_by_task_id == 本 task ∧ 全绑定匹配 ∧ **recovery_state ≠ indeterminate（锁存，§2.2d）∧ recovery_mode ≠ manual_only（R16）∧ 连接 epoch > 授权 granted_epoch ∧ 旧执行已静默（§2.2d 唯一定义）**（D12 漂移不在此 guard 内，见上）→ 响应 resumed(reconcile_required)，同事务 granted_epoch := 连接 epoch、recovery_state := reconcile_required（不重复核销、不迁移状态）。broker 收到 resumed **必须先远端对账**，并以 `release_reconcile_report` 上报（不是 release outcome，不触发 C-10；C-10 在 recovery_state = reconcile_required 时拒绝，强制"先对账"）。**多目标发布中部分目标已在远端出现 → 只能上报 indeterminate**（不得报 confirmed_happened 或 confirmed_not_happened）。三种结果：
+- **confirmed_happened** → 编排同事务 ledger 级按 released 映射关闭（HLD §4.3"probe 得出可映射结果后关闭"；pending 含 admin_finalize 亦记入 RunSummary——broker/远端事实优先），响应 `ReconcileRecorded(happened_mapped)`；
+- **confirmed_not_happened** → 编排**同一事务内原子复核**：execution manifest 匹配 ∧ 无 pending(admin_finalize) ∧ 授权仍 consumed_by 本 task（连接 epoch == granted_epoch 已由 C-10a guard 保证）。通过 → recovery_state := execution_permitted，响应 `ReconcileProceed`，broker 方可执行发布并在**实际执行后**发 release_outcome（两值）；不通过（D12 漂移或已登记 pending admin_finalize）→ 远端已证未发生，**同事务**按 (b) 的 release_failed 映射 ledger 级关闭（admin_finalize 最优先），响应 `ReconcileRecorded(not_happened_mapped)`——broker **不得发布、不再发 release_outcome**（R11 C-04：release_outcome 恒为"实际执行后"）；
+- **indeterminate** → recovery_state := indeterminate，记录对账结果，响应 `ReconcileRecorded(indeterminate_recorded)`，Run 保持 publishing 走 C-11；此后同授权的 reconcile_report 一律 E-CP-ILLEGAL-STATE（C-10a guard），**换 epoch 也不解除**（④ guard 排除 indeterminate），终局只经 C-11（人工裁决）或 C-11a（只探测通道的自动定论），同一观测不存在两种终局（C11-06，R12 跨 epoch 补全）。
+同 epoch 的第二个 reconcile_report（不同 request_id）因 recovery_state 已离开 reconcile_required 而被拒（E-CP-ILLEGAL-STATE）——**每个 epoch 至多一次执行许可**；新 epoch 必须重新经恢复臂 resumed、重新对账、重新获许可，旧 epoch 的 receipt 只作历史记录（R11 C-02）。
+**处理序（R10-07，R11 修订；全命令统一序见 §5.1）**：① envelope 解析（FramingError 不落 receipt）→ ② payload schema（ResponseError(E-CP-VALIDATION) 不落 receipt）→ ③ 连接级校验：已握手 ∧ 连接 epoch == 当前 broker epoch ∧ 载荷 broker_epoch == 连接 epoch（任一不符 → E-CP-FORBIDDEN，不落 receipt）→ ④ 在 **broker 入向幂等域 (broker_epoch, command)** 查 receipt：同 request_id 同载荷（含首次 granted 的 ACK 丢失重投——同一 broker 实例断连重连后 epoch 不变，§2.2d）→ 返回首响应（仍为 granted）；不同 epoch 的域互不可见——新实例复用旧 request_id 不命中旧 receipt，走 guard 进入恢复臂 → ⑤ 状态机 guard 与执行（结果作为首响应落 receipt）：**不同 request_id** 的同 epoch 第二次 consume → rejected(already_consumed)。同 task 不同 request_id 并发恰一成功（CF-AUTH-02 不冲突）。**他 task**：running 下 → rejected 且按 (b) 关闭；publishing 下 → rejected(already_consumed) **仅拒绝、不改 Run 状态**（publishing 只能经 outcome/probe 关闭）。防御：publishing ∧ 本 task ∧ 绑定不匹配（理论不可达）→ ResponseError(E-CP-ILLEGAL-STATE) + 审计（Y9-01）。
+**(b) broker outcome 映射（C-10）**：released → closed(succeeded)（pending 记入 RunSummary）；release_failed → 按序消费 pending：admin_finalize（closed(fail_safe)+版本漂移 FeedbackReport）＞ cancel（closed(cancelled)）＞ fail_safe（closed(fail_safe)）＞ 均无 → closed(fail_safe) + ledger 级 release_failed FeedbackReport。series 更新 pending 仅记录。
+**(c) 裁决映射（C-11）**：confirm_released ≡ released 映射；confirm_not_released ≡ release_failed 映射（同 (b) pending 序；guard：broker 静默确认（§2.2d 唯一定义）+ evidence_refs 非空）；keep_unknown → 保持 publishing；自动定论见 C-11a（只探测通道，§2.2d）。并发/重复裁决：publishing 状态 CAS + **request_id 幂等**（重放返回同 adjudication_id 与首个结果——R5-02）。
+**(d) broker 实例、epoch、实例租约与静默（R11 定案，R12 补来源与锁存）**：
+- **epoch 按 broker 进程实例分配**：实例身份 = (pid, pgid, start_time)（防 pid 复用）。**身份由编排取得而非信载荷（R12）**：broker_hello 时编排以 socket peer credential（SO_PEERCRED）取 pid，读 `/proc/<pid>/stat` 取 pgid 与 starttime，与载荷逐项比对，不符 → E-CP-FORBIDDEN（载荷仅作回显）。计数器**持久化于 Ledger**（跨编排重启单调）；范围 `1 ≤ broker_epoch < 2^53`（与 §0.1 整数界一致），达到上界拒绝新分配并告警，禁止回绕。新实例 broker_hello → 计数器 +1 成为**当前 epoch**；同一实例（且仍为当前、未 retiring）断连重连 hello → 返回同一 epoch、绑定新连接并关闭该实例旧连接；**epoch 低于当前 epoch 或处于 retiring / retired 的实例**再次 hello → E-CP-FORBIDDEN + 告警（任一时刻只有一个当前 broker 实例，旧实例的命令一律因连接 epoch 不现行被拒）。broker_hello 幂等域 = (broker 实例身份, command)，保留期 = 实例存续 + 7 天；**连接绑定是每连接动作**：同实例 hello（含同 request_id 的 receipt 重放）每次都先完成连接绑定、关闭旧连接，再返回同一 epoch（§5.1 处理序③的 hello 例外）。
+- **实例租约（BrokerInstanceLease，Ledger，R12；R13 改由 launcher 回收）**：`{broker_epoch, pid, pgid, start_time, lease_expires_at, state ∈ {live, retiring, lapsed, reclaimed}}`。broker 以 broker socket 上的 `heartbeat`（同 worker 心跳模型：HeartbeatRequest，幂等域 (broker_epoch, command)，不存响应）续期；连接关闭且超过租约时长未续期 → `lapsed`；task 级失联（下条）→ `retiring`。**retiring 实例除 heartbeat 外的全部命令一律 E-CP-FORBIDDEN**（heartbeat 仍受理，仅用于判断进程是否存活；与 §5.1 处理序③一致），其 hello 亦被拒。**实例 cgroup 绑定（R14）**：每个 broker 实例由 launcher 在**专属 domain cgroup** 中启动，cgroup 路径与创建代次（`cgroup_path`、`cgroup_generation`）由 launcher 写入该实例的 BrokerInstanceLease（可信绑定，非 broker 自报）；broker 的全部后代不得迁出该子树——部署契约：broker UID 只对本实例子树内的 cgroup 有委派写权限，对子树外任何 `cgroup.procs` 无写权限（deploy 检查项，conformance 断言迁出尝试失败）；该 cgroup 在本实例回收证明提交前不得删除或复用，同名重建的目录不能沿用旧证明。lapsed 与 retiring 实例进入同一回收流程：**由 deploy 特权 launcher（HLD §7.1 / §8.5，与 CLI、构建边界同一 cgroup v2 契约）对该实例 cgroup 写 `cgroup.kill`**，随后等待**子树为空的证据**——`cgroup.events` 中 `populated=0`（递归覆盖全部子 cgroup；不得以根 `cgroup.procs` 为空替代），取得后才持久化 `reclaimed`；存在后代、接口读取失败、绑定无法核实或清理超时均不 reclaimed；launcher 重启后按持久化绑定继续回收，目录不存在本身不是已回收证明。**新实例的拉起不等待旧实例 reclaimed（R14）**：launcher 写完 `cgroup.kill` 即可在新的专属 cgroup 中拉起新实例（新 hello → 新 epoch；旧实例的命令已因 retiring / 非当前 epoch 被拒）；持有者更替重派按授权状态分流——未核销者立即以替代协议重派（不等静默，同 CF-AUTH-05d），已核销者与 C-11a 负向映射仍须等旧实例 reclaimed。broker 的 systemd 单元由 launcher 拉起、不自行重启，避免与回收竞争；旧实例无法清理 → 其已核销 task 不重派、告警并计入 R13，未核销 task 与其他实例上的发布不受影响。不引入第二套 task epoch——执行权只按实例 epoch。
+- **release task 阶段期限（R13）**：每个非终态 release task 持久化 `phase ∈ {awaiting_consume, awaiting_outcome, awaiting_reconcile, awaiting_probe}` 与 `phase_deadline`，由进入该阶段的事务写入：execute 型 dispatch 的 intent 事务（暂缓者为其放行事务，R18）→ awaiting_consume；granted（C-09①）事务与 ReconcileProceed 事务 → awaiting_outcome；resumed（④）事务 → awaiting_reconcile；recovery_state := indeterminate 的事务 → awaiting_probe。期限自该事务提交时刻起算，**编排重启与 receipt 重放不重置**；收到非终局结果只切换阶段，不取消失联检测。awaiting_consume / awaiting_outcome / awaiting_reconcile 到期仍无该阶段的完成事件 → **task 级失联**：即使实例心跳正常，也将该实例标记 `retiring` 并按上条回收，静默确认后换 epoch 按持有者更替重派恢复；期限须足以容纳正常发布，到期不得被解释为"未发生"。**阶段定时器代次（R15）**：每段期限绑定 `(phase_generation, owner_epoch, phase, phase_deadline)`，只对 `timer_armed = true` 且 owner_epoch 对应实例仍 live 的当前阶段生效；到期事务以 CAS 消费该代定时器（同一代只能触发一次，重启重放与重复扫描不再计数），同事务将 owner 实例标记 retiring，并把该实例上全部未终结 task 的定时器**解除武装**（`timer_armed := false`）。等待旧 holder 静默期间（`recovery_mode = waiting_holder`）不运行执行类阶段期限，只按 R13 告警；新派发或恢复事务写入新阶段时 `phase_generation` +1 并重新武装，旧代的到期事件一律忽略。阶段期限到期与该阶段完成事件以同一 Ledger 事务的 phase / generation CAS 互斥：完成事件先提交则旧期限失效；失联判定先提交则后到的结果因连接守卫被拒，由新实例对账。launcher 对每个实例的退役 / 替换请求幂等——重复到期事件、retire_requested 或 launcher 自身恢复，不得为同一退役事件反复拉起替换实例。
+**失联、中断与影响次数上界（R14–R19；R19 把契约条款与归因策略分层）**：下列 **K1–K6 是契约条款**，任何实现都必须满足。"哪一个 task 引起了故障"的**归因策略不属于契约**：本段末的"参考归因策略 v1"是实现起点，可依运行数据替换，替换后仍须满足 K1–K6。"毒丸在有限次故障内被识别""无辜 task 不被他人计数"是归因策略的**目标与度量项**，不是契约保证——同一进程内多个 task 共享故障域时，单凭退役快照只能近似归因（R19）。契约保证的是：**每个 task 的自动恢复次数有界、耗尽时落在安全出口；全局有停止出口；暂缓派发与独占预约不会无唤醒地卡住；归因输入可审计、可重放**。
+- **执行绑定（R17，R18 补结束条件）**：task 对实例的执行绑定 = 该 task 非终态、`recovery_mode ≠ manual_only`、阶段 ∈ {awaiting_consume, awaiting_outcome, awaiting_reconcile}，且其**最近一条** execute 型 DispatchReceipt 已放行（state ∈ {intent, completed}、`held_for_isolation = false`）、target_epoch == 该实例 epoch。绑定在正常 intent 提交事务或暂缓 intent 的放行事务内建立（以此为准，不看 ACK）；在 task 终结、转 awaiting_probe（indeterminate）、置 manual_only、或其 receipt 被替代的事务内结束——历史 receipt 保留，但不再构成绑定。实例就绪（hello 完成）前不得建立绑定；绑定的建立与实例退役判定按同一实例状态串行化（判定先提交则禁止新绑定，绑定先提交则该故障按下条归责）。
+- **只探测在飞（R19）**：task 对实例的只探测在飞 = 一条已放行（`held_for_isolation = false`）、target_epoch == 该实例 epoch、尚无对应 probe_seq 报告的 probe 型 DispatchReceipt；收到该报告、被替代或 task 终结即结束。它不构成执行绑定、不改变执行权，只进入退役快照，用于 K2 影响上界与审计。
+- **退役事件与归责（R17，R18 重写，R19 补只探测快照）**：每个实例（或 hello 前的启动尝试）的首次退役判定以 CAS 生成一条 RetirementEvent，在事件本身保存判定事务时的两份不可变快照——执行绑定 `bound_task_ids` 与只探测在飞 `probe_task_ids`；后续 lapsed 通知、重复请求与 launcher 重启复用同一事件，不另换域、不重复计数。按 cause 恰归一个域：
+  ① **计划性回收**（cause ∈ {`retire_requested`——C-11a 为取得负向证据而回收持有者；`isolation_drain`——参考策略排空时更换实例；`planned_restart`——运维经 launcher 登记的 drain / restart}）→ domain = `controlled_reclaim`：不增加任何计数（含 K2）、不进入隔离通道、不计启动 / 健康失败；同实例 task 解除定时器后按授权实际状态重排（已核销者仍等静默）。未经 launcher 登记的运维重启按 lapsed 处理。
+  ② **任务故障**（cause ∈ {`phase_deadline`, `lapsed`}）且两份快照不全为空 → domain = `task`，按 K1–K2 结算。phase_deadline 的有效判定要求当前武装阶段与 live owner，触发 task 必为执行绑定者，故其 `bound_task_ids` 不会为空；若为空即为不变量破坏，拒绝提交并告警。
+  ③ **启动 / 健康故障**（cause = `start_failure`，或 lapsed 时两份快照均为空——含任务全部完成后的无任务失效）→ domain = `start_health`，由 launcher 按 spawn_attempt_id 恰一次结算；hello 前的失败没有实例 epoch，RetirementEvent.broker_epoch 为空。
+- **K1 计数约束**：`loss_count`（phase_deadline）与 `interrupt_count`（lapsed）只在任务域事件的判定事务内 +1，持久化、重启不重置。**只有该事件 `bound_task_ids` 中的 task 可被计数**，同一事件对同一 task 至多计一次；被计数者由归因策略决定，与 `strategy_version` 一起作为 `charged_task_ids` 同事务写入该事件。计划性回收域与启动 / 健康域不计任何 task。
+- **K2 影响次数上界**：任务域事件同事务对**两份快照中的每个 task** 的 `affected_count` +1（与是否被计数无关，同一事件至多一次）。这是与归因策略无关的终止上界：任一 task 至多经历 `max_task_affected`（配置，缺省 6；加载时校验 ≥ `max_task_losses` + `max_task_interrupts`，使归因正确时计数上限先触发）次任务域退役，归因策略从不计数时同样成立。
+- **K3 上限与分流**：`loss_count` 达到 `max_task_losses`（缺省 2）、`interrupt_count` 达到 `max_task_interrupts`（缺省 3）或 `affected_count` 达到 `max_task_affected` 后，该 task **不再参与持有者更替重派与自动执行**，**按授权实际是否已核销分流**（不由阶段名推断——已核销任务的恢复派发同样处于 awaiting_consume）：未核销者（Run = running）同事务撤销授权并按 (b) 的 release_failed 映射在 ledger 级关闭（reason = `dispatch_loss_exhausted`；授权从未核销、无发布发生）；已核销者（Run = publishing）同事务置 `recovery_mode = manual_only`、解除定时器，保持 publishing、告警并计入 R13，**只经人工裁决（C-11）收尾**——C-09、④ 与 execute 派发显式排除 manual_only，只探测通道对其只产出裁决证据、不自动映射终局（C-11a），不伪造远端事实、不授予新执行许可。**只探测上的耗尽**：task 因出现在 `probe_task_ids` 中而达到 `max_task_affected`（此类 task 必已核销）→ 同事务置 manual_only（若尚未）并置 `auto_probe_suspended = true`，周期任务与 hello 扫描不再对其自动发只探测，告警并计入 R13；C-11 裁决时强制 probe 按 unknown 处理，evidence_refs 须引用相应 RetirementEvent；运维可显式发起单次强制只探测（同受 K2 结算），负向裁决仍须原 holder 静默。
+- **K4 全局停止出口**：① launcher 启动 / 健康失败上界（见下文 launcher 段）；② **跨任务熔断**：持久化窗口（CrossTaskBreaker）记录自上次"正常结案"或人工恢复以来，cause = `lapsed` 的任务域事件中**被计数、或因该事件达到 K3 上限**的不同 task_id；同一事件只登记一次，同一 task 重复故障既不扩大也不清空集合。集合大小达到 `max_distinct_task_faults`（配置，缺省 2）→ launcher 停止自动拉起、告警并计入 R13。**正常结案** = 有效 broker outcome 或恢复对账结果完成 ledger 级终局映射；consume / resumed、dispatch ACK、耗尽导致的合成关闭与人工结案都不算。窗口登记与正常结案按 Ledger 提交序更新，重启保留窗口与熔断状态，只有正常结案或显式人工恢复能清零。phase_deadline 事件不进入该窗口（远端整体变慢不应被判为 broker 故障而停止拉起）：同一窗口内不同 task 上的 phase_deadline 事件达到 `max_distinct_task_deadlines`（配置）→ 告警"远端或执行停滞"并计入 R13，不停止拉起，各 task 仍受 K2 / K3 约束。熔断是**保守的可用性保护**，不证明根因在 broker；多个不同毒丸也可能触发暂停，这是接受的代价。
+- **K5 暂缓派发与独占预约（适用于任何归因策略引入的暂缓与独占）**：
+  - **暂缓 intent**（`held_for_isolation = true`）不写阶段与期限，不构成执行绑定或只探测在飞，不被 §2.5 恢复规则 (a) 重送。每个暂缓项都有持久化的唤醒来源；编排重启后周期扫描**全部**暂缓项（target_epoch ≠ 当前 epoch 者在放行事务内改走 §2.5 (b) 替代协议）。
+  - **放行事务**为单事务 CAS。共同复核：当前 live epoch、task 非终态、独占许可、同 token 至多一个 intent；target_epoch 已变化先走替代协议，替代项仍经本入口。再按 `payload.kind` 互斥分型——**execute**：复核 C-09 / ④ 的执行派发条件（排除 indeterminate 与 manual_only）及适用的静默条件；清 held、建立执行绑定、写 owner_epoch 与新 phase_generation / awaiting_consume / 期限（期限自放行提交起算；同一已放行 intent 重送不刷新期限），再发送。**probe**：复核 Run = publishing、授权已核销且（recovery_state = indeterminate ∨ recovery_mode = manual_only）、`auto_probe_suspended = false`（或为运维显式发起）、载荷为只探测，**不要求静默**；清 held 后不写 awaiting_consume、不建立执行绑定、不武装执行类阶段定时器，保持原 recovery_state / recovery_mode，按 probe_seq 与 probe_interval 管理重试；结果只经 C-11a（manual_only 下只作裁决证据，负向自动映射仍须静默）。
+  - **作废**：task 终结时，暂缓的 execute 与 probe 同事务作废（state := superseded，superseded_by 指向关闭事件）；转 indeterminate 或置 manual_only 时只作废暂缓的 execute，仍合法的暂缓 probe 保留。
+  - **独占预约的释放**：任何使其他派发暂缓的独占预约（参考策略中的隔离头选择）都必须在下列事务内按其选择序号 `selection_seq` CAS 释放，并在同一事务写持久化唤醒：持有者业务终结；持有者转 awaiting_probe（indeterminate）；持有者置 manual_only；持有者所在实例退役（先按 cause 与快照归责，计划性回收不因持有者在独占中而改计任务故障）；预约尚未生效时持有者不再满足准入（关闭、授权过期等）。正常阶段切换（awaiting_consume → awaiting_outcome / awaiting_reconcile）不释放预约；旧 selection_seq 的完成或回调通知不得释放新预约。唤醒被消费时先处理当时已排队的合法暂缓项，再建立下一个预约；处理批次与进度持久化，新流量不能无限扩充本批。
+  - **活性**：不存在没有唤醒来源的暂缓项或预约；所依赖的条件无法恢复时（如旧 holder 永不静默）转为可见的等待 / 暂停状态并告警，不得静默饿死其他 Run。
+  - **授权过期**：处于暂缓或独占等待中的 task，**只有授权实际仍未核销且 Run = running 时**，expires_at 到期才按 C-09② 关闭，reason = `authorization_expired_in_isolation`（编排侧关闭原因，写入审计与 FeedbackReport，不经 consume 返回），与 consume 互斥，不计 loss / interrupt / affected；已核销的恢复 execute 与只探测不因 expires_at 关闭。
+- **K6 可审计**：RetirementEvent（两份快照、cause、domain、charged_task_ids、strategy_version）、各 task 的三种计数、熔断窗口与暂停原因持久化，可离线重放，使不同归因策略能在同一事件序列上比较。度量项至少包括：因 K2 上限耗尽而从未被计数的 task 数、熔断触发次数与原因、被识别 task 的故障次数分布。
+
+**参考归因策略 v1（非规范，R19）**：实现起点，`strategy_version = "ref-v1"`；替换须满足 K1–K6，并在 RetirementEvent 中记录新版本号。
+- **S1 单绑定才计数**：任务域事件的 `bound_task_ids` 恰为一个 task → 计数该 task（phase_deadline 计 loss，lapsed 计 interrupt）；≥ 2 → 都不计数，全部进入隔离通道（phase_deadline 的触发 task 排在本批首位）——阶段期限到期只说明该 task 未按时完成，实例级停滞时触发者未必是肇事者。`probe_task_ids` 中的 task 在 v1 中只受 K2 约束、不参与归因。**已知局限（实现期待办）**：开放状态下，与单个 execute 同处的只探测若引起崩溃，会计到该 execute 头上；是否让只探测参与归因（合并快照、只探测也进入独占等）待运行数据决定。
+- **S2 全局隔离通道**：
+  - **成员与顺序**：成员按 (进入通道序, 未核销者在前按授权 expires_at、已核销者在后按 consumed_at, task_id) 排序并持久化，成员身份保留至 task 终结。
+  - **成员调度状态** `isolation_state` 在每个判定事务内按授权实际状态持久化（与 consume 的 CAS 单胜，不由阶段名推断）：未核销且有效、未耗尽 → `ready`（不等待并不存在的 granted_epoch 持有者，也不以旧派发实例的回收为前置）；已核销且非 indeterminate、未耗尽 → `waiting_holder`，自己的 granted_epoch 持有者静默后转 ready；indeterminate → `probe_only`；耗尽或业务终结 → `diagnostic_done`。只有 ready 成员可被选为隔离头。
+  - **通道状态**（IsolationChannel，持久化 `channel_state ∈ {open, draining, exclusive}`、隔离头、目标 epoch 与 selection_seq）：`open` 时普通派发照常。出现 ready 成员 → 按序选隔离头（selection_seq +1）、转 `draining`：自此当前实例的一切新出向（新任务、其他成员、hello 扫描与 intent 续送产生的 execute 与 release_probe_dispatch）写 intent 后暂缓；当前实例上隔离头以外的执行绑定全部结束，且在飞的只探测全部收到报告、或等待达到 `probe_drain_timeout`（配置，不超过 probe 超时）后以 `isolation_drain` 计划性回收更换实例 → `exclusive`，放行隔离头的派发。协议不提供只探测取消命令；draining 期间新只探测已暂缓，因此等待有界。已在飞的 execute 按原阶段期限与完成规则处理，持续的新流量因被暂缓而不能延长排空。排空期间实例退役 → 本次选择作废，隔离头在新实例上重新排空。`exclusive` 下隔离头所在实例退役时绑定快照恰为它本身，按 S1 计数。隔离头的一切离开（正常终结、转 indeterminate、置 manual_only、所在实例退役、排空中失去准入）都按 K5"独占预约的释放"执行：通道回到 `open`，**先**放行全部仍合法的暂缓项，**再**为下一个 ready 成员进入 draining——普通流量与隔离成员都不会被饿死。
+  - `recovery_mode = isolating`、`isolation_state`、`suspect_set_id` / `isolation_seq` 与 IsolationChannel 表是本策略的字段；替换策略可不使用，但 manual_only 与 waiting_holder 的语义属于契约。
+- **S3 v1 的目标（度量，不是保证）**：broker 与远端其余部分健康时，毒丸至多经 1 + `max_task_interrupts`（或 1 + `max_task_losses`）次故障被识别；多绑定故障中的无辜 task 不被计数。验收见 §6.5 末"参考策略验收"（不计入 conformance 结论）。
+**recovery_mode 迁移（R16–R19）**：`active` →（已核销 task 所在实例**被标记 retiring 或 lapsed 的事务**）`waiting_holder` →（该实例 reclaimed 后的持有者更替重派事务）`active`；`active` / `waiting_holder` →（参考策略 v1：归责为进入隔离通道）`isolating`（保持至 task 终结，通道内的调度由 `isolation_state` 表示）；任一 →（K3 耗尽，已核销者）`manual_only`（终止于 C-11 裁决）。`waiting_holder` 与 `isolating` 下执行类阶段定时器只对 `exclusive` 状态下的隔离头武装。
+**launcher 启动 / 健康失败上界（R16–R19；K4 ①）**：launcher 在拉起前先持久化 `spawn_attempt_id` 及 cgroup 绑定，再启动进程；启动 / 健康失败 = 归责 ③ 的事件（exec 失败、hello 前退出、hello 超时、或退役时两份快照均为空的 lapsed——含任务全部完成后的无任务失效），按 spawn_attempt_id 恰一次结算，launcher 重启不丢失计数与待处理 spawn 记录、不为同一待处理 spawn 重复拉起替换实例；hello 前的清理依据 spawn 记录执行，不伪造 broker_epoch 或已回收租约。连续启动 / 健康失败达到 `max_start_failures`（配置）或触发跨任务熔断 → 停止自动拉起、告警并计入 R13；指数退避只决定重试间隔；成功 hello 并连续健康运行达到配置的稳定期才清零。有执行绑定或只探测在飞的失效只归任务域或计划性回收域，两种计数互斥且完备。
+**awaiting_probe 不触发 retiring**——它等待的是 probe 结果，由下述周期任务驱动，probe 超时只重发只探测请求。回收后历史 granted / proceed receipt 不能经旧实例重放恢复执行权（旧实例命令被③拒绝）。
+- **静默（唯一定义，同时用于 §2.2a④、§2.2c、C-11、C-11a 的负向映射与下述重派）**：旧实例租约 = `reclaimed` ∧ **该实例绑定的 cgroup 子树无存活进程**（经 launcher 确认 `cgroup.events` 的 `populated=0`，递归覆盖全部子 cgroup——不以根 `cgroup.procs` 为空替代，R14；cgroup 覆盖 setsid 逃逸出进程组的子进程，强于 pgid 扫描；编排不是 broker 的父进程，HLD §8.3①"lease 回收 + pgid reap 确认"即按此判据落地）。单独的租约过期、lapsed、或旧 leader pid 已退出 / 被无关进程复用，都不构成静默。无法确认静默 → 保持 publishing 并告警（R13），不把租约丢失冒充静默。
+- **执行权持有者 = 授权 granted_epoch**：C-10 / C-10a 仅接受连接 epoch == granted_epoch 的命令；旧实例在死亡前排队、晚到的 release_outcome / reconcile_report 因 epoch 不符被拒并审计，不会关闭当前执行。
+- **indeterminate 锁存（R12）**：授权 recovery_state = indeterminate 后**不因 holder / epoch 更替而清除**：④ 恢复臂 guard 要求 recovery_state ≠ indeterminate（否则 consume → ConsumeRejected(`recovery_indeterminate`)，Run 不变）；对 indeterminate 者、以及 `recovery_mode = manual_only` 的已核销者（任一 recovery_state，R16），**不发可执行的 release_dispatch**，改发出向命令 `release_probe_dispatch`（ReleaseProbeDispatch，**不含 release_plan_ref 与发布内容**，只含探测目标与 fencing 标识，§5.1）——broker 只查远端、不执行，以 `release_probe_report` 上报（C-11a，HLD §8.3"probe 远端结果"的唯一载体）。**发送点（R13；R19：两处均跳过 `auto_probe_suspended = true` 者，运维显式发起的单次强制只探测除外）**：① 受理新 broker 实例 hello 后的重派扫描；② **编排周期任务**——对每个 recovery_state = indeterminate 且 `auto_probe_suspended = false`（§2.2d K3，R19）的授权，按 `probe_interval`（配置）向当前 live 实例写 probe 型 DispatchReceipt 并送达；二者均受"同 token 至多一个 intent"约束。结果：confirmed_happened → released 映射；confirmed_not_happened 且 granted_epoch 持有者实例静默 → release_failed 映射（同 (b) pending 序）；confirmed_not_happened 而持有者未静默（如持有者即当前实例）→ 记录观测、响应 `retire_requested` 并将持有者实例标记 retiring（不授予执行权），静默确认后以新 probe_seq / 新 request_id 重新探测，再作负向映射（不改写此前 receipt）；indeterminate → 记录、下一周期继续。**broker 侧结构约束（部署契约 + conformance）**：处理 ReleaseProbeDispatch 时只构造只读 adapter 客户端、不加载写凭据原语；probe 路径上 FakePublisher 写调用计数恒为 0。
+- **持有者更替重派（R11 C-03/C11-05，R12 修订）**：DispatchReceipt.completed 仅表示 RPC 送达，不表示 release task 完成。编排在 **受理新 broker 实例的 broker_hello** 后，扫描全部非终态、且 `recovery_mode ∉ {isolating, manual_only}` 的 release task 中"**最近一条 DispatchReceipt（任一 state）的 target_epoch ≠ 当前 epoch**"者（isolating 者只由参考策略的隔离通道按序派发，manual_only 者只发只探测且 `auto_probe_suspended = false`；重派同样经统一出向调度入口校验 K5 独占许可，R17、R19），按授权状态分流：recovery_state = indeterminate → 发 release_probe_dispatch（上条）；授权**未核销**（Run=running）→ 直接以**替代协议**（§2.5）写新 intent 重新送达，broker 走正常 consume（旧实例已不可能核销——其连接 epoch 不现行）；授权**已核销**（Run=publishing）→ 须先确认旧 holder 静默，再以替代协议重新送达，broker consume 进入恢复臂 resumed → 对账；旧 holder 未静默 → 不重派、告警并计入 R13 时长，由周期任务在静默确认后重试。重派载荷取自 DispatchReceipt 持久化的 ReleaseDispatch（不由 payload_digest 反推），不新建逻辑 task、不重复核销。
+
+
+### 2.3 Agent 注册与任务消息
+
+```python
+class ProducerSelector(BaseModel): report_type: str; producer_node: str | None = None  # None=按支配链最近唯一者
+class AgentRegistration(BaseModel):
+    agent_type: str; task_prefix: str
+    status_set: frozenset[str]; contract_requires: str
+    produces: frozenset[str]                       # 产出 report_type 集（V-13b/V-15 判定依据）
+    hard_required_inputs: tuple[ProducerSelector, ...] = ()
+    capabilities_required: frozenset[str] = frozenset()
+
+class UpstreamItem(BaseModel): producer_node: str; report_type: str; task_id: str | None; ref: ArtifactRef | None  # ref=None 即缺失
+class TaskInput(BaseModel):
+    run_id: str; task_id: str; dispatch_id: str; attempt: int
+    node: str; node_config: dict[str, JsonValue]; mode: str | None
+    series_id: str; snapshot_id: str
+    upstream: tuple[UpstreamItem, ...]              # 按 (producer_node, report_type) 唯一；同类型多生产者各占一项
+    join_inputs: tuple[JoinInputItem, ...] | None
+class JoinInputItem(BaseModel): source_node: str; handoff_ref: ArtifactRef; series_id: str; task_id: str
+
+class HandoffResult(BaseModel):
+    task_id: str; status: str; series_id: str
+    series_candidate_id: str | None = None      # 引用本 task 预登记的 candidate；无 patch 任务为 None（R4-01）
+    artifact_refs: dict[str, ArtifactRef]; reason: str = ""
+    metrics: dict[str, float] = {}                  # 运行时观测，不参与 digest（§0.1）
+
+class ArtifactRef(BaseModel): digest: str; kind: str; media_type: str = "application/json"; data_class: DataClass
+class RunContext(BaseModel):                        # setup(ctx) 注入面（HLD §5.1.1/§6.1）
+    run_id: str; snapshot_id: str; snapshot_manifest_ref: ArtifactRef
+    pipeline_id: str; pipeline_digest: str; contract_version: str
+    capabilities: frozenset[str]                    # 实际注入的能力句柄名集（发布通道永不出现）
+```
+
+### 2.4 Report schema
+```python
+class ReportBase(BaseModel):
+    report_type: str; task_id: str; run_id: str; series_id: str
+    created_at: datetime; data_class: DataClass
+    inputs: tuple[UpstreamItem, ...]        # 消费与缺失显式记录（HLD §6.3）
+```
+每个具名 Report = ReportBase 子类 + 类型体；**ReleasePlan 亦然**（§2.5 类型体中与头重复的 run_id/series_id 移除，由头承载）。`HandoffResult.artifact_refs` 键约定：所产各 Report 以其 report_type 为键（框架据此 + produces 声明构造 UpstreamItem 并校验齐全），其余产物键自由但不得与任何 report_type 冲突。类型体（`# gateable` = 可作 threshold 指标的顶层定点字符串字段）：
+- **BuildReport**：`succeeded: bool; targets_built: list[str]; revdep_scope: list[str]; failed_target: str|None; error_excerpt_ref: ArtifactRef|None; fix_patches: list[PatchAttribution]; rounds_used: int; output_refs: dict[str, ArtifactRef]`（RPM 等构建产物，供 hard-require）
+- **UTReport**：`passed: bool; boards: list[str]; suites: list[SuiteResult]; failure_analysis_ref: ArtifactRef|None; fix_patches: list[PatchAttribution]`
+```python
+class SuiteResult(BaseModel): name: str; board_id: str; passed: int = Field(ge=0); failed: int = Field(ge=0); skipped: int = Field(ge=0)
+class MetricEntry(BaseModel): value: str; baseline: str; regression_pct: str   # 定点字符串（§0.1 pattern）
+class RoundDigest(BaseModel): round: int = Field(ge=1); node: str; task_id: str; status: str; summary: str
+class ReportEntry(BaseModel): producer_node: str; report_type: str; task_id: str; ref: ArtifactRef
+```
+- **BenchReport**：`regression_pct: str  # gateable（定点，全指标最大回归）; metrics: dict[str, MetricEntry]; baseline_ref: ArtifactRef; patch_relatedness_ref: ArtifactRef`；`MetricEntry = {value: str, baseline: str, regression_pct: str}`（定点字符串）
+- **ReviewReport**：`verdict: Literal["pass","concerns","block"]; findings: list[Finding]`
+```python
+class Finding(BaseModel): severity: Literal["info","minor","major","blocker"]; locus: str; summary: str; evidence_ref: ArtifactRef | None = None
+class PendingBase(BaseModel): registered_at: datetime; dedup_key: str
+class PendingCancel(PendingBase): kind: Literal["cancel"]; requestor: str
+class PendingFailSafe(PendingBase): kind: Literal["fail_safe"]; origin_node: str; reason: str; evidence_refs: tuple[ArtifactRef, ...] = ()
+class PendingSeriesUpdate(PendingBase): kind: Literal["series_update"]; candidate_ref: str; expected_parent_series_id: str
+class PendingAdminFinalize(PendingBase): kind: Literal["admin_finalize"]; drift_detail: dict[str, JsonValue]
+PendingEvent = Annotated[PendingCancel | PendingFailSafe | PendingSeriesUpdate | PendingAdminFinalize, Field(discriminator="kind")]
+class AgentProducer(BaseModel): kind: Literal["agent"]; agent_type: str; task_id: str; round: int
+class ExternalProducer(BaseModel): kind: Literal["external"]; principal: str
+Producer = Annotated[AgentProducer | ExternalProducer, Field(discriminator="kind")]
+```
+- **ReleasePlan**（report_type="release_plan"，ci 型 Agent 产物）：见 §2.5
+- **FeedbackReport**：`origin: Literal["fail_safe","admin_finalize","release_failed"]; rounds: list[RoundDigest]; all_patches: list[PatchAttribution]; reports: list[ReportEntry]; parent_run_id: str|None`；`ReportEntry = {producer_node: str, report_type: str, task_id: str, ref: ArtifactRef}`（按 (producer_node, report_type, task_id) 唯一、按 created_at 排序——R2-09）；`RoundDigest = {round: int, node: str, task_id: str, status: str, summary: str}`
+- **RunSummary**：`final_state: str; reason: str; pending_events: list[PendingEvent]; artifact_index_ref: ArtifactRef`（**不含 corrections**——修正只经结果 envelope 返回，§2.7/§5.4）；`PendingEvent` 为按 kind 判别联合，各型携带消费所需载荷（CS-10）：cancel{requestor}；fail_safe{origin_node, reason, evidence_refs}；series_update{candidate_ref, expected_parent_series_id}；admin_finalize{drift_detail}——固定映射消费时据此生成规定的 FeedbackReport；公共字段 registered_at, dedup_key
+- **PatchAttribution**：`patch_digest: str; repo_id: str; producer: Producer; motivation: str`；`Producer` 为判别联合：`AgentProducer{kind:"agent", agent_type, task_id, round}` | `ExternalProducer{kind:"external", principal}`（初始 series 的外部 Coding Agent 取后者，principal = Skill bearer 主体标识——R3-06）；`patch_digest = "sha256:" + hex(sha256(unified_diff 原文字节，统一 \n 行尾、保证结尾单换行；不含 description))`
+
+### 2.5 ReleasePlan / ReleaseManifest / 授权
+
+```python
+class ReleaseAction(StrEnum): push_branch="push_branch"; gerrit_review="gerrit_review"
+class ReleaseTarget(BaseModel): adapter: str; repo: str; branch: str; action: ReleaseAction
+class ReleasePlan(ReportBase):       # Report 型：公共头承载 run/series/task/created/data_class/inputs
+    tree_digest: str
+    targets: tuple[ReleaseTarget, ...]              # 有序；执行按序；(adapter,repo,branch) 重复拒绝
+    squash: bool = False
+class ReleaseManifest(BaseModel):    # = Plan 无损规范化 + 环境绑定；含全部影响远端效果的字段
+    snapshot_id: str; series_id: str; tree_digest: str
+    targets: tuple[ReleaseTarget, ...]; squash: bool
+    pipeline_digest: str; exec_manifest_digest: str
+class ApprovalDecisionRequest(BaseModel):   # decision_submit 载荷（无 id，服务端签发）
+    gate_instance_id: str; run_id: str
+    verdict: Literal["approved","rejected"]     # reviewer 不在请求中——由 Approval 服务按 peer credential 映射生成（R3-09），不符映射拒绝并审计
+    manifest: ReleaseManifest | None                # release-approval 型必填；plain 型 None
+    evidence_refs: tuple[ArtifactRef, ...] = ()
+class ApprovalDecision(ApprovalDecisionRequest): decision_id: str; reviewer: str; created_at: datetime  # 服务端补齐落 Ledger
+class AuthorizationRecord(BaseModel):               # Ledger 行，非 bearer；revoke/consume 语义见下（HLD §8.2）
+    token_id: str; run_id: str; gate_instance_id: str; decision_id: str
+    ci_plan_task_id: str; series_id: str; tree_digest: str
+    release_manifest_digest: str; expires_at: datetime
+    consumed_by_task_id: str | None = None; revoked: bool = False
+    granted_epoch: int | None = None              # 执行权持有者 epoch：核销时 / 恢复臂 resumed 时 := 连接 epoch（R9-01，R11 §2.2d）
+    recovery_state: Literal["none","reconcile_required","execution_permitted","indeterminate"] = "none"   # §2.2a④（R11 C-02/C11-06）
+class DispatchReceipt(BaseModel):                     # Ledger 表——编排→broker 出向的**唯一**模型（R10-03，R11 C11-04 统一）
+    token_id: str; request_id: str                    # 唯一键 (token_id, request_id)；request_id = ulid，于事务①生成
+    payload: ReleaseDispatchPayload                   # 完整载荷持久化（重派取此，不由 digest 反推——R11 C-03）；execute 型或 probe 型（R13）
+    payload_digest: str; target_epoch: int            # 送达时的当前 broker epoch
+    recovery: bool = False                            # 持有者更替重派（§2.2d）
+    state: Literal["intent","completed","superseded"]  # superseded：被更高 epoch 的替代协议取代（R12）
+    superseded_by: str | None = None; superseded_at: datetime | None = None
+    first_response: WireJson | None = None; sent_at: datetime | None = None; completed_at: datetime | None = None
+    held_for_isolation: bool = False                  # 隔离通道排空 / 独占期间暂缓放行（R17，R18）；暂缓期间 sent_at 为空、不构成执行绑定；作废时 state := superseded、superseded_by 指向关闭或模式变更事件
+class RetirementEvent(BaseModel):                     # Ledger 表（R17，R18 扩充；§2.2d 退役事件与归责）；主键 retirement_event_id
+    retirement_event_id: str; broker_epoch: int | None; spawn_attempt_id: str   # broker_epoch 仅 hello 前的 start_failure 为空
+    cause: Literal["phase_deadline","lapsed","retire_requested","isolation_drain","planned_restart","start_failure"]
+    domain: Literal["task","start_health","controlled_reclaim"]; trigger_task_id: str | None = None
+    bound_task_ids: tuple[str, ...] = ()               # 首次判定事务的不可变快照：该实例上的执行绑定（R19 由 IsolationChannel 移回）
+    probe_task_ids: tuple[str, ...] = ()               # 同一快照：该实例上的只探测在飞（R19）
+    charged_task_ids: tuple[str, ...] = (); strategy_version: str | None = None   # K1：被计数者 ⊆ bound_task_ids，及作出归因的策略版本（R19）
+class CrossTaskBreaker(BaseModel):                    # Ledger 单行表（R19，§2.2d K4 ②跨任务熔断窗口）
+    window_task_ids: tuple[str, ...] = (); deadline_task_ids: tuple[str, ...] = ()   # lapsed 计数 / 耗尽的不同 task；phase_deadline 的不同 task（只告警）
+    window_opened_at: datetime; tripped: bool = False; tripped_at: datetime | None = None
+class IsolationChannel(BaseModel):                    # Ledger 单行表（R18；R19 起为参考归因策略 v1 的字段，§2.2d S2）
+    channel_state: Literal["open","draining","exclusive"]; head_task_id: str | None = None
+    target_epoch: int | None = None; selection_seq: int                 # 每次选择隔离头递增；释放与旧通知均按它 CAS（K5）
+class BrokerInstanceLease(BaseModel):                 # Ledger 表（R12，§2.2d）；主键 broker_epoch
+    broker_epoch: int; pid: int; pgid: int; start_time: datetime
+    cgroup_path: str; cgroup_generation: str           # launcher 写入的可信绑定，非 broker 自报（R14）
+    lease_expires_at: datetime; state: Literal["live","retiring","lapsed","reclaimed"]
+class ReleaseTaskState(BaseModel):                    # Ledger 表（R14，§2.2d 阶段期限与失联上界）；主键 task_id
+    task_id: str; token_id: str
+    phase: Literal["awaiting_consume","awaiting_outcome","awaiting_reconcile","awaiting_probe"]
+    phase_entered_at: datetime; phase_deadline: datetime
+    owner_epoch: int; phase_generation: int; timer_armed: bool                 # 阶段定时器代次（R15）
+    recovery_mode: Literal["active","waiting_holder","isolating","manual_only"] = "active"
+    suspect_set_id: str | None = None; isolation_seq: int | None = None        # 隔离通道成员身份与顺序（R16，R17 全局通道）
+    isolation_state: Literal["ready","waiting_holder","probe_only","diagnostic_done"] | None = None   # 通道内调度状态（R17）
+    loss_count: int = 0; interrupt_count: int = 0                              # 失联 / 中断次数上界（R14、R15；K1）
+    affected_count: int = 0; auto_probe_suspended: bool = False                # 影响次数上界与只探测耗尽（R19；K2、K3）
+# 出向协议：事务①（发送前）写 intent（含载荷、投影 digest、target_epoch）；发送；broker 响应；事务②写 completed + 首响应。
+# completed = RPC 送达完成（broker ACK），**不表示 release task 完成**；release task 的续跑责任由 §2.2d 持有者更替重派承担。
+# 约束：同一 token 任一时刻至多一个 state=intent 的 receipt（不分 execute / probe 型；第二个 intent 拒绝——防并发重派）。
+# 恢复（R12：两条规则按 target_epoch 互斥）：
+#  (a) intent 无 completed ∧ held_for_isolation = false ∧ target_epoch == 当前 epoch → 以同 request_id 重送（暂缓 intent 只由 §2.2d K5 放行事务处理，R18、R19）（同一 broker 实例进程内去重）；
+#  (b) 最近一条 receipt（任一 state）的 target_epoch ≠ 当前 epoch → 只经 §2.2d 持有者更替重派，使用**替代协议**：满足重派条件后，
+#      在一个 Ledger 事务内将该 token 的旧 intent CAS 为 superseded（记 superseded_by），并写新 intent（新 request_id、
+#      target_epoch = 当前 epoch、recovery = true）；不伪造旧 ACK、不改旧 target_epoch；已 completed 的旧 receipt 保持不变。
+#      发送前复核当前 epoch 仍等于新 intent 的 target_epoch；其间再次更替则对新 intent 重走替代协议。
+#  superseded receipt 的迟到 ACK / 响应只写审计，不完成新 receipt、不恢复旧执行权、不产生第三个 intent。
+# 同 id 异 digest 在事务①即拒
+# （E-CP-IDEM-MISMATCH）；响应到达时 receipt 已 completed → 比较后复用首响应。崩溃点：intent 前/后、broker 受理后 ACK 前、
+# ACK 后落账前、**completed 之后 broker 崩溃（§2.2d 重派）**，以及 intent 状态下 broker 实例更替（替代协议）——CF-IPC-10 + CF-LED 点位。
+```
+decision_submit（release-approval 型）事务内 **新鲜度 CAS**：gate waiting ∧ manifest 所引 ReleasePlan 为该 Run 当前版本 ∧ series/tree 为最新（HLD §8.2）。`ci_plan_task_id` 来源闭合：授权记录取 gate 实例绑定的 ReleasePlan Report 的 task_id（decision_submit 新鲜度 CAS 校验该 Report 为当前版本）。release 节点 dispatch 载荷含 `token_id`；broker 以 token_id 读授权记录取 manifest digest，依 release_plan_ref 重建 canonical ReleaseManifest 并比对 digest 后执行——审批-核销-执行链以 digest 闭合（CS-16）。
+
+### 2.6 ExecutionManifest
+```python
+class ExecutionManifest(BaseModel):
+    pipeline_digest: str; compiled_pipeline_digest: str
+    contract_version: str; framework_version: str; engine_version: str
+    agent_artifacts: dict[str, str]                 # agent_type → 制品 digest
+    provider_policy_digest: str; dsl_version: int
+```
+复核时点：恢复 / dispatch / decision_submit / C-09 核销前（三支 ③）。
+
+### 2.7 Skill 协议
+
+```python
+TargetSpec = Annotated[ReposSpec | ManifestSpec | PackagesSpec, Field(discriminator="kind")]
+class ReposSpec(BaseModel): kind: Literal["repos"]; repo_ids: list[str] = Field(min_length=1)
+class ManifestSpec(BaseModel): kind: Literal["manifest"]; name: str
+class PackagesSpec(BaseModel): kind: Literal["packages"]; packages: list[str] = Field(min_length=1)
+# 解析语义（CS-24）：repos → 须为部署 repo 注册表子集，未知项 E-SKILL-VALIDATION；manifest → 注册表命名清单；
+# packages → 经部署 package→repo 映射解析为 repo 集，未知项拒绝；三型解析结果去重、非空，空集拒绝。
+# 各 endpoint 请求/响应为具名模型（字段级定义如下，A0 收录）：
+class PatchItem(BaseModel): repo_id: str; unified_diff: str; description: str
+class CreateRunRequest(BaseModel): pipeline_id: str; target_spec: TargetSpec; request_id: str
+class CreateRunResponse(BaseModel): run_id: str; state: str
+class SubmitPatchRequest(BaseModel): series: list[PatchItem] = Field(min_length=1); request_id: str
+class SubmitPatchResponse(BaseModel): accepted: bool; series_id: str; queue_position: int
+class SnapshotInfo(BaseModel): snapshot_id: str; snapshot_manifest_ref: ArtifactRef
+class RunStatusResponse(BaseModel):
+    state: str; node_progress: dict[str, str]; loop_counters: dict[str, int]
+    queue_position: int | None = None; snapshot: SnapshotInfo | None = None
+class CancelRequest(BaseModel): request_id: str
+class CancelResponse(BaseModel): state: str
+class TraceEvent(BaseModel): seq: int; ts: datetime; run_id: str; task_id: str | None; type: str; payload: dict[str, JsonValue]
+class SkillError(BaseModel): code: str; message: str; detail: dict[str, JsonValue] = {}
+class ResultEnvelope(BaseModel):
+    run_summary: RunSummary; feedback_report: ArtifactRef | None
+    corrections: tuple[CorrectionRecord, ...]       # append-only，摘要之外返回（HLD §8.3）
+```
+
+| 操作 | 请求/响应 | 错误码（HTTP） |
+|------|-----------|---------------|
+| POST /runs（异步） | CreateRunRequest{pipeline_id, target_spec, request_id} → CreateRunResponse{run_id, state} | E-SKILL-VALIDATION(400)、E-SKILL-CAPACITY(503) |
+| POST /runs/{id}/patches | SubmitPatchRequest{series: [PatchItem], request_id} → SubmitPatchResponse{accepted, series_id, **queue_position**}（重放返回同 series_id + **当前**队列位置，注明非首次快照——HLD §6.5） | E-SKILL-DUP-SUBMIT(409)、E-SKILL-UNAPPLICABLE(422，附首个失败 hunk 定位；**二进制 patch 段 v1 显式拒绝**，CC C-i)、E-SKILL-TOO-LARGE(413) |
+| GET /runs/{id} | → RunStatusResponse{state, node_progress, loop_counters, queue_position?, snapshot?: {snapshot_id, snapshot_manifest_ref}（C-02 后非空；state=closed(snapshot_error) 即拉取失败形态）}——单一响应模型 | E-SKILL-NOT-FOUND(404) |
+| GET /runs/{id}/result | → ResultEnvelope | E-SKILL-NOT-READY(425) |
+| POST /runs/{id}/cancel | CancelRequest{request_id} → CancelResponse{state} | E-SKILL-FORBIDDEN(403) |
+| （通用） | — | E-SKILL-IDEM-MISMATCH(422)、E-SKILL-AUTH(401) |
+`PatchItem = {repo_id, unified_diff, description}`；应用序 = snapshot manifest 序。request_id 语义见 §0.2。
+
+---
+
+## 3. Activation 与 Series（HLD §4.2.4/§7.6.2/§4.5）
+
+### 3.1 ActivationRecord 与传播（含 loop_vector 复制规则）
+
+```python
+class ActivationRecord(BaseModel):
+    activation_id: str; run_id: str
+    origin: Literal["root","fanout","loop"]; origin_node: str | None   # root=None；fanout=分派节点名；loop=loop_id（R3-10）
+    parent_activation_id: str | None
+    loop_vector: dict[str, int]          # loop_id → 通过次数
+    series_id: str; state: Literal["open","superseded"]
+```
+1. **root**：entry 分派事务生成；parent=None；loop_vector={}。
+2. **线性/分支中间边**：继承派发边的 activation 上下文（含 loop_vector），不新建。
+3. **fan-out（一般情形）**：分派事务生成子 activation；parent=分派 task 的 activation；loop_vector=父副本。
+4. **loop**：环边分派事务内：(a) 条件③级联退役（被采用者及子孙闭包、计时器作废）；(b) 生成 loop activation L：parent=被退役者的 parent，loop_vector=被退役者副本且该 loop_id 分量 +1；(c) 环计数/预算检查同事务（触顶改路 fail_safe，L 不生成）。
+5. **join 消费**：下游 dispatch 的 activation 上下文 = 被消费 activation 的 parent（loop_vector 取 parent 记录值）。
+6. **替代 cohort（规则 3 的显式覆盖）**：当 fan-out 分派 task 的 activation 为 loop 型（origin="loop"）且该 fan-out 为其所回流的共同 fan-out 时，生成的 activation **parent 直接置为该 loop activation 的 parent**（即被退役 cohort 的 parent），loop_vector=该 loop activation 副本——祖先链深度不随环轮次增长（HLD"环不插入额外嵌套层级"）；conformance 断言 CF-ACT-06。
+supersede 三条件（内联复述，权威 HLD §4.2.4）：①series 推进事务全量退役旧 series open activation 并作废计时器；②到达全 stale（①的防御兜底）；③环边采用同事务级联退役（§3.1 规则 4a）。CAS 守卫：到达/消费/分派/timeout 均校验自身 open ∧ 祖先链无 superseded ∧ series 为 current。恢复自 Ledger 重建全部 activation。
+
+### 3.2 join 到达与消费（自足文本）
+到达键 `(run_id, join_id, activation_id, source_node)` 唯一，重复到达丢弃并审计；到达 series ≠ current → 标 stale 丢弃并审计（CF-ACT-08）。全部 wait_for 源到达且 series 一致 → 单事务：各到达置 consumed + 下游 dispatch（父 scope，§3.1 规则 5）+ 作废该 activation 的 join 计时器；消费与分派 CAS 校验自身 open ∧ 祖先链无 superseded。timeout 自该 activation 首达起算，口径 §3.4。
+
+### 3.3a 初始 series（C-04 单事务；R2-03）
+校验完整 series 可应用 → 按 §0.2 格式签发初始 series_id（`SER-`+ulid；本文不使用特例字面量）→ 写 lineage（parent=None、base=snapshot、patches 全量 PatchAttribution，producer 为外部型，见 §2.4）→ 计算 tree_digest（§3.5）→ 推进 current → Run→queued。request_id 重放返回同 series_id；事务前崩溃 = 未受理（客户端重试），事务后崩溃 = 幂等返回。首个 task_complete 以该初始 series_id 为 expected_parent 接续 CAS 链。
+
+### 3.3 series 推进（task_complete 复合事务，**两条封闭分支**——R4-01）
+**统一前置校验（两分支共同，R5-01——HLD §4.2.4"series_id 经框架校验不可自造"的落地）**：task/dispatch 身份由 socket 连接上下文推导（不信载荷）；`HandoffResult.series_id == TaskInput.series_id`（本 dispatch 的 Ledger 记录值）；所产各 Report 头的 run/task/series 与 Ledger 上下文逐项一致；candidate.expected_parent_series_id 同一致。任一不符 → sys.invalid_result（跨 series 伪造用例 CF-SER-09）。
+**分支判定以 Ledger 在册数对账（R4-01 终修）**：本 task 活跃 candidate 在册数 = 0 且引用 None → 分支 A；在册数 = 1 且引用恰为该 candidate_id → 分支 B；**在册 1 而引用 None（漏填防静默丢 patch）、在册 0 而引用非 None、引用他 task、多引用 → 一律拒绝 sys.invalid_result**。
+**CandidateRecord 与跨 attempt 恢复（R6-03 定案）**：
+```python
+class CandidateRecord(BaseModel):
+    candidate_id: str; run_id: str; task_id: str; dispatch_id: str; attempt: int
+    request_id: str; payload_digest: str; payload_ref: ArtifactRef; expected_parent_series_id: str
+    # payload_ref：受理事务内将 candidate_patches 的 canonical 全文持久化为内容寻址 artifact
+    # （kind="candidate_patches", media_type=application/json, data_class=internal_code）——分支 B 的
+    # lineage/patch 应用/tree_digest 由此取原文。提交序：先按 Blob 协议落内容，再以单 Ledger 事务提交
+    # artifact 索引 + CandidateRecord + 命令 receipt（R8-07）。payload_digest = digest(候选 patches 列表)
+    # ≡ payload_ref.digest（同源）；请求级摘要另记 request_digest = digest(SeriesCandidateSubmitRequest) 于 receipt。
+    # **编排重启语义（R8-06，HLD §5.1.2/§4.1）**：编排失联 → worker EOF 自杀 → 恢复以新 attempt 重执行 →
+    # 旧 candidate 依规则 discarded；不存在"重启后消费旧 candidate"路径
+    state: Literal["registered","consumed","discarded"]
+```
+"每 task 至多一活跃"按**当前 attempt**生效；attempt 启动事务**原子**将上一 attempt 的 registered 项退役 discarded 且不阻塞新 attempt 登记（HLD §4.3.2"同 task 新 attempt 重试"的合法路径——正常恢复不自锁）；series_candidate_submit 幂等域 = (task_id, **attempt**, 命令名)（§5.1 envelope）：当前 attempt 同载荷重放返回同 candidate_id、异载荷 → E-CP-IDEM-MISMATCH；跨 attempt 同 request_id 因域含 attempt 而视为新提交（返回新 candidate_id，不会取回 discarded 项）；task 终局未消费 → discarded。用例 CF-SER-10。
+**分支 A**：仅提交结果 + artifact 索引 + 幂等终态，**不签发 series、不推进 current、不触发任何失效**。
+**分支 B**：执行下列全步。
+1. guard：Run ≠ publishing（是则 series 相关步骤降级 pending 记录，其余照常）；
+2. CAS `current_series_id == expected_parent_series_id`——失败归 **sys.error**（合法并发竞争，可按节点 retry 策略重试；HLD"防并发丢 patch"）；
+3. 结果 + artifact 索引转正 + 幂等终态；
+4. 签发 series_id、写 lineage `{new, parent, contributed_by_task, patches}`、推进 current；
+5. tree_digest 计算记录（§3.5）；
+6. 失效链：未核销授权 revoke、待审批项作废、旧 series open activation 条件①全量退役。
+
+### 3.4 计时口径
+run_budget：自 C-04 起算，排除 paused 与 publishing 时段，queued 计入；触顶经 C-13。loop：计数器键 `(run_id, loop_id)`，环边通过 +1，**max_rounds: N = 环边允许通过 N 次、第 N+1 次通过请求在预算检查处拦截强制路由 fail_safe**（内联复述，权威 HLD §4.5）；wall_clock 自该 loop 首条环边首次通过起算，排除 paused/publishing。join timeout：`(run_id, join_id, activation_id)` 级，自首达起算，同口径。全部计时以 Ledger 暂停区间扣除实现。
+
+### 3.5 tree_digest（应用后 tree OID 的规范组合；HLD §7.6.2）
+1. 对每个 repo：以 bare object DB / 临时 index（无需 worktree）自 snapshot commit 依 series lineage 应用序 apply 全部该 repo patch，得 **git tree OID**；apply 失败：submit_patch 阶段即拒绝（E-SKILL-UNAPPLICABLE）；完成事务阶段失败（业务 fix-patch candidate 首次在此应用，可达）→ sys.error（T-b1）。
+2. 确定性步骤：临时 index ← `git read-tree <snapshot commit tree>` → 逐 patch `git apply --cached --whitespace=nowarn` → `git write-tree` 得 OID；OID 表示 = `<object-format>:<hex>`（如 `sha1:...`，取仓库 object-format）。`line_i = repo_id + ":" + oid_repr`（repo_id 字符集 `[a-z0-9._-]+`，V-00 校验）；`tree_digest = "sha256:" + hex(sha256(UTF-8("\n".join(lines sorted by repo_id))))`，**无末尾换行**；golden vectors 覆盖多仓/空 patch 仓/等价 tree（R2-06）。
+3. 性质：等价最终 tree ⇒ 等 digest（增删相消、异 patch 同果均一致）；BuildExecutor worktree 应用后复核 tree OID 一致，不一致 → sys.error（兜底为**校验**而非替代定义）。conformance 含等价 tree 用例 CF-SER-04。
+
+### 3.6 snapshot manifest（自足文本）
+`SnapshotManifest = list[{repo_id, remote, commit, path}]`，按 repo_id 升序规范化；snapshot_id 形式与引用语义见 §0.2；跨仓 patch 应用按 manifest 序，任一仓失败整组回滚。
+
+---
+
+## 4. 效应幂等（HLD §5.2）
+
+### 4.1 键与调用面
+```python
+class EffectResult(BaseModel): return_value: JsonValue; artifact_refs: dict[str, ArtifactRef] = {}
+def side_effect(effect_call_id: str, params: BaseModel, fn: EffectType, repeat_seq: int | None = None) -> EffectResult
+# idem_key = digest({run_id, dispatch_id, effect_class, effect_call_id, effect_params_digest, repeat_seq})
+```
+succeeded 复用即返回存储的 EffectResult。**同键与调用约束（自足文本）**：
+- `effect_call_id` 调用方提供、代码内稳定命名（`[a-z0-9_]+`），conformance 静态检查每逻辑调用点唯一命名，同 task 内唯一在册；显式重复执行由调用方给定 `repeat_seq` 迭代序。
+- `effect_class` 由 fn 所属注册效应类型推导，自由函数不可包装（SDK 拒绝）；服务端交叉校验见 §5.1。
+- `effect_params_digest = digest(params)`，params 内 ArtifactRef 以 digest 参与；canonical 全文存 params_ref。
+- **不含 attempt**：同 (call_id, params) 重试/重放命中同一记录；非决定论重执行实参不同 → 新键；跨 attempt 遗留的同 call_id 旧在途异参记录经 attempt 启动对账定态（§4.3 三支），succeeded/unknown 不得改写为 abandoned。
+- **异参新键允许集合（仅辖跨 attempt 定态记录）**：succeeded/abandoned → 放行（succeeded 仅同参精确键复用、不得跨参复用）；unknown → task 已随 sys.error 中止，无新键。干净终态 failed：**异参新 claim 一律放行新键**（异参 = 新逻辑效应，准入不受 disposition 辖；HLD "依类别策略放行"的字面）；**同键**再调用才按 failed_disposition 处置（§4.3）。
+- 运行时拒绝：仅同一 attempt 内，同 call_id 存在未决（claimed/running）记录时的异参新 claim → 拒绝，task 报 sys.invalid_result。
+
+### 4.2 EffectRecord 与迁移表
+```python
+class EffectRecord(BaseModel):
+    idem_key: str; version: int; run_id: str; task_id: str; dispatch_id: str
+    effect_class: str; effect_call_id: str; effect_params_digest: str; repeat_seq: int | None
+    params_ref: ArtifactRef                       # canonical params 全文（内容寻址）——对账 probe 的参数来源（R2-05）
+    state: Literal["claimed","running","succeeded","failed","abandoned","unknown"]
+    result: EffectResult | None; error: EffectError | None; updated_at: datetime
+    probe_attempts: int = 0; next_probe_at: datetime | None = None   # indeterminate 有限重试进度持久化（CS-19）
+class EffectError(BaseModel): category: Literal["validation","execution","transport","probe"]; message: str; detail: dict[str, JsonValue] = {}
+```
+**迁移表（完整边集，自足）**：
+
+| 从\到 | running | succeeded | failed | abandoned | unknown |
+|-------|---------|-----------|--------|-----------|---------|
+| claimed | worker ack 后启动 | 仅对账：probe 确认成功（补写 result） | 仅框架启动前判定失败（参数校验拒绝等；传输失败停留 claimed 待对账） | 对账：未发生 / replay_safe 退役 | 对账：不可判定（重试耗尽 ∧ 非 replay_safe fallback，§4.3） |
+| running | — | 效应完成 | 效应失败 | 对账：未发生 / replay_safe 退役 | 对账：不可判定（重试耗尽 ∧ 非 replay_safe fallback，§4.3） |
+| succeeded/failed/abandoned/unknown | 终态不迁移；abandoned 之上重执行 = 同键 version+1 新记录 | | | | |
+
+### 4.3 Probe 与 failed 处置
+```python
+class ProbeOutcome(StrEnum): confirmed_happened="confirmed_happened"; confirmed_not_happened="confirmed_not_happened"; indeterminate="indeterminate"; not_supported="not_supported"
+class ProbeResult(BaseModel): outcome: ProbeOutcome; result: EffectResult | None  # confirmed_happened 时必填。**Reconciliation 协议（R4-04 定案）**：probe 在专用 reconciliation worker 子进程执行（无 Ledger 写权限、进程组/心跳语义同 §5.1.2；通道为专用 socketpair，命令面仅 `heartbeat` 与 `probe_report{idem_key, version, probe_attempt, ProbeResult}` 两条——数据面其余命令（effect_claim/task_complete 等）不可达）。派发消息 `ProbeDispatch{idem_key, version, probe_attempt, effect_class, params_ref, record_view}`（record_view = EffectRecord 只读投影：state/repeat_seq/updated_at；params 由 worker 依 params_ref 只读取 blob）；`probe_retry_max` 语义 = **总尝试数上限（含首次）**，计数仅在**新派发事务**递增；派发登记 pending，receipt 到达才消——三态定案（R8-04）：**未尝试**（pending 无 receipt 且无 spawn 记录）→ 重派同组（同 probe_attempt，不递增，幂等）；**spawn 明确失败**（fork/exec 返回错误，无 pgid 登记）→ 合成 receipt origin=synthetic_spawn_failed，消耗该次；**已启动后丢失**（pgid 已登记，进程退出/心跳失且无 receipt）→ 合成 receipt origin=synthetic_worker_loss，消耗该次。合成 receipt 模型：
+```python
+class ProbeReceipt(BaseModel):
+    idem_key: str; version: int; probe_attempt: int; result: ProbeResult
+    origin: Literal["worker","synthetic_spawn_failed","synthetic_worker_loss"]
+    payload_digest: str          # worker 回报 = digest(ProbeReport)；合成 = 保留值 sha256:000…0（64 个 0）——真实迟到回报必不符 → 拒并审计（X8-02）
+    received_at: datetime
+```
+耗尽判定 = attempts==max ∧ 该组 receipt 为 indeterminate（含合成）；**耗尽后严格走 §4.3 能力矩阵**（∧replay_safe → abandoned + 版本化重放；∧¬replay_safe → unknown + sys.error），不无条件 unknown。probe_report 判定序（R6-06）：①存在同组 receipt → 校验 payload digest（不符拒）→ 返回首响应（**优先于过期判定**）；②无 receipt 且存在更高 (version, attempt) 组 → 过期拒绝并审计；③无 receipt 且为当前组 → 受理并持久化 receipt。CF-EF-10 逐项断言见 §6.3（三态 × 两能力终态）；**事务点定案**：probe_attempts 递增与 next_probe_at 写入在**派发事务**（spawn 前）——worker 执行后/回写前崩溃时该次已计数（保守、上限不被突破）；probe_report 以 (idem_key, version, probe_attempt) CAS 提交状态迁移，陈旧组拒绝并审计。派发前/执行后/回写前三点崩溃注入 = CF-EF-10。probe 必须只读、无副作用（conformance 断言）
+class EffectType(Protocol):
+    effect_class: ClassVar[str]; replay_safe: ClassVar[bool]
+    supports_probe: ClassVar[bool]                # 静态能力位（对账路径选择依据）
+    probe_retry_max: ClassVar[int]; probe_retry_interval_sec: ClassVar[int]   # indeterminate 有限重试参数（P-04）
+    failed_disposition: ClassVar[Literal["raise","retry_new_version"]]; failed_max_retries: ClassVar[int]
+    def probe(self, params, record) -> ProbeResult: ...
+```
+对账映射（**probe 优先**）：supports_probe → 先 probe：confirmed_happened → succeeded（复用）；confirmed_not_happened → abandoned；indeterminate → 有限重试（§4.2 进度字段）耗尽后——**若 replay_safe → 退役 abandoned 版本化重放（fallback）**，否则 unknown + sys.error（不得当作 not_happened）。not_supported ∧ replay_safe → 退役重放；两能力皆无 → unknown + sys.error。四组合（supports_probe × replay_safe）全覆盖 = CF-EF-02 轴定案。failed 同键再调用：按 failed_disposition——raise（返回存储 error）或 retry_new_version（版本化重试至 failed_max_retries，超限 raise）。
+注册面：entry-point namespace `codingsystem.effects`；装配时校验 effect_class 唯一、能力声明齐备、类别硬性要求（build.* 可 probe；board.* 可 probe 或 replay_safe；publish.* 仅 broker，业务注册即拒绝）。
+
+---
+
+## 5. 安全接口（HLD §7.1/§8）
+
+### 5.1 Control-plane 命令集
+
+**worker 数据面 socket**（per-task socketpair；命令封闭枚举）：
+
+| 命令 | 载荷 | 语义 |
+|------|------|------|
+| heartbeat | seq | 租约信号（间隔配置）；编排侧超时 = 租约失；worker 侧 socket EOF = 通道失 → killpg 自杀（HLD §5.1.2 双向覆盖） |
+| effect_claim | effect_call_id, effect_class, params_ref, repeat_seq | 响应为封闭联合 `{action: execute(附 idem_key,version) | reuse(附存储 EffectResult) | error(附 EffectError)}`；服务端以注册表交叉校验载荷 effect_class 与 fn 注册类型，不符 → sys.invalid_result 并审计（Kimi M-03）；写 claimed（execute ack 前禁执行） |
+| effect_transition | idem_key, **version**, expected_state, to∈{running,succeeded,failed}, result?/error? | (idem_key, version, expected_state) 三元 CAS；陈旧 version/状态不符 → 拒绝并审计（R4-02，CF-EF-09） |
+| trace_append | 事件批（≤64 条/批，≥1s 批间隔——背压约定） | 追加 |
+| blob_begin | size_hint, **data_class** → lease_id + 临时路径 | **lease 先于写入**（HLD §7.5）；续租经 heartbeat 隐含 |
+| blob_commit | lease_id, digest | fsync→rename→digest 复验→索引暂存转正，原子；失败保持 lease 待 abort/GC |
+| blob_abort | lease_id | 释放 lease + 清理临时文件 |
+| series_candidate_submit | candidate_patches, expected_parent_series_id → candidate_id（ulid，绑定本 task；**每 task 至多一个**，重复提交拒绝） | 预登记（不改 current） |
+| task_complete | HandoffResult | §3.3 复合事务 |
+崩溃恢复：lease 未 commit → 超年龄 GC；已 rename 未入索引 → 孤儿 GC；索引在 blob 失 → 消费方 sys.error（HLD §7.5 各点覆盖，用例 CF-BLOB-*）。
+
+**命令载荷模型（R6-02——A0 每一项在此或前文有唯一完整定义；contracts 包 CI 以自动检查**双向**断言：A0 每个名字解析到正文唯一定义，且正文每个具名模型在 A0 有条目——R11）**：
+```python
+class CommandName(StrEnum):
+    heartbeat="heartbeat"; effect_claim="effect_claim"; effect_transition="effect_transition"; trace_append="trace_append"
+    blob_begin="blob_begin"; blob_commit="blob_commit"; blob_abort="blob_abort"
+    series_candidate_submit="series_candidate_submit"; task_complete="task_complete"
+    decision_submit="decision_submit"; authorization_consume="authorization_consume"; release_outcome="release_outcome"
+    release_dispatch="release_dispatch"; pending_register="pending_register"; adjudicate="adjudicate"
+    post_close_correction="post_close_correction"; probe_report="probe_report"
+    broker_hello="broker_hello"; release_reconcile_report="release_reconcile_report"     # v0.11 新增（19 命令）
+    release_probe_report="release_probe_report"                                           # v0.13 新增（20 命令，C-11a）
+    release_probe_dispatch="release_probe_dispatch"                                       # v0.14 新增（21 命令，出向只探测，R13）
+class CommandEnvelope(BaseModel): request_id: str; command: CommandName; payload: WireJson   # 幂等摘要 = digest(投影(payload))，投影见 §1.2/注册表
+class CommandAck(BaseModel): ok: Literal[True]
+class CommandError(BaseModel):
+    code: Literal["E-CP-IDEM-MISMATCH","E-CP-D12-MISMATCH","E-CP-VALIDATION","E-CP-ILLEGAL-STATE","E-CP-FORBIDDEN"]; message: str
+    # E-CP-D12-MISMATCH 为 **Run≠publishing** 时全部 D12 复核点（dispatch / decision_submit / running 下 authorization_consume）的唯一 wire 表示；
+    # publishing 下 D12 漂移不以错误返回——由 pending(admin_finalize) 承载，恢复臂与对账照常（§2.2a，HLD §8.3；R11 C-04/C11-03）
+class ResponseOk(BaseModel): status: Literal["ok"]; request_id: str; command: CommandName; response: WireJson   # 回显关联（R9-05）；按注册表解析专属响应
+class ResponseError(BaseModel): status: Literal["error"]; request_id: str; command: CommandName; error: CommandError
+# 关联规则：允许每 socket 多请求在途（heartbeat 与业务命令并发）、响应可乱序，客户端以 (request_id, command) 关联；CF-IPC-07 反序完成用例
+class FramingError(BaseModel): status: Literal["framing_error"]; request_id: str | None; raw_command: str | None; code: Literal["E-CP-VALIDATION"]; message: str   # envelope 前置解析失败（未知 command / 缺或非法 request_id / envelope 非法）：关联字段可空（非字符串的关联字段按不可提取处理为 None）、原始 command 原样回显（R10-05）；**不落 receipt、不占幂等域**（R11 C11-07）
+CommandResponse = Annotated[ResponseOk | ResponseError | FramingError, Field(discriminator="status")]
+# 命令注册表（封闭、无省略；R8-02）——command → 请求模型 → 成功响应模型：
+# heartbeat→HeartbeatRequest→CommandAck | effect_claim→EffectClaimRequest→EffectClaimResponse |
+# effect_transition→EffectTransitionRequest→CommandAck | trace_append→TraceAppendRequest→CommandAck |
+# blob_begin→BlobBeginRequest→BlobBeginResponse | blob_commit→BlobCommitRequest→CommandAck | blob_abort→BlobAbortRequest→CommandAck |
+# series_candidate_submit→SeriesCandidateSubmitRequest→SeriesCandidateSubmitResponse | task_complete→TaskCompleteRequest→CommandAck |
+# decision_submit→DecisionSubmitCommand→DecisionSubmitResult | authorization_consume→AuthorizationConsumeRequest→AuthorizationConsumeResponse |
+# release_outcome→ReleaseOutcomeRequest→CommandAck | release_dispatch→ReleaseDispatch→CommandAck | pending_register→PendingRegisterRequest→CommandAck |
+# adjudicate→AdjudicateRequest→AdjudicateResult | post_close_correction→PostCloseCorrectionRequest→CommandAck | probe_report→ProbeReport→CommandAck |
+# broker_hello→BrokerHelloRequest→BrokerHelloResult | release_reconcile_report→ReleaseReconcileReport→ReleaseReconcileResponse |
+# release_probe_report→ReleaseProbeReport→ReleaseProbeResponse | release_probe_dispatch→ReleaseProbeDispatch→CommandAck
+# （heartbeat 同时开放于 worker 数据面与 broker socket——后者续期 BrokerInstanceLease，幂等域 (broker_epoch, command)，R12）
+class HeartbeatRequest(BaseModel): seq: int
+class EffectClaimRequest(BaseModel): effect_call_id: str; effect_class: str; params_ref: ArtifactRef; repeat_seq: int | None = None
+class ClaimExecute(BaseModel): action: Literal["execute"]; idem_key: str; version: int
+class ClaimReuse(BaseModel): action: Literal["reuse"]; result: EffectResult
+class ClaimError(BaseModel): action: Literal["error"]; error: EffectError
+EffectClaimResponse = Annotated[ClaimExecute | ClaimReuse | ClaimError, Field(discriminator="action")]
+class EffectTransitionRequest(BaseModel):
+    idem_key: str; version: int; expected_state: Literal["claimed","running"]
+    to: Literal["running","succeeded","failed"]; result: EffectResult | None = None; error: EffectError | None = None
+class TraceAppendRequest(BaseModel): events: list[TraceEvent] = Field(min_length=1, max_length=64)
+class BlobBeginRequest(BaseModel): size_hint: int; data_class: DataClass
+class BlobBeginResponse(BaseModel): lease_id: str; temp_path: str
+class BlobCommitRequest(BaseModel): lease_id: str; digest: str
+class BlobAbortRequest(BaseModel): lease_id: str
+class SeriesCandidateSubmitRequest(BaseModel): candidate_patches: list[PatchItem] = Field(min_length=1); expected_parent_series_id: str
+class SeriesCandidateSubmitResponse(BaseModel): candidate_id: str
+class TaskCompleteRequest(BaseModel): result: HandoffResult
+class DecisionSubmitCommand(BaseModel): request: ApprovalDecisionRequest; reviewer: str
+class DecisionSubmitResult(BaseModel): decision_id: str; token_id: str | None
+class AuthorizationConsumeRequest(BaseModel): token_id: str; task_id: str; release_manifest_digest: str; broker_epoch: int   # 必须等于本连接 epoch 且连接 epoch 为当前 epoch（不等 → E-CP-FORBIDDEN，处理序③），字段仅作显式回显
+class BrokerHelloRequest(BaseModel): broker_pid: int; broker_pgid: int; broker_start_time: datetime   # 仅作回显：编排以 SO_PEERCRED + /proc 取得实例身份并逐项比对，不符 → E-CP-FORBIDDEN（R12，§2.2d）
+class BrokerHelloResult(BaseModel): broker_epoch: int    # 按 broker 进程实例分配（§2.2d）：计数器持久化于 Ledger；1 ≤ epoch < 2^53；同一当前实例重连返回同一 epoch；低于当前 epoch 的实例 hello → E-CP-FORBIDDEN
+class ConsumeGranted(BaseModel): result: Literal["granted"]        # 已核销，Run→publishing，可发布
+class ConsumeRejected(BaseModel): result: Literal["rejected"]; reason: Literal["authorization_expired","stale","revoked","already_consumed","holder_not_quiesced","recovery_indeterminate","dispatch_loss_exhausted"]  # 不核销；Run 状态：running 下按 §2.2b 关闭，publishing 下不变；holder_not_quiesced = 恢复臂前置"旧执行静默"（§2.2d）不满足（原 stale_epoch，R11 更名）
+class ConsumeResumed(BaseModel): result: Literal["resumed"]; reconcile_required: Literal[True]   # broker 恢复臂（§2.2a④）：须先远端对账再执行
+AuthorizationConsumeResponse = Annotated[ConsumeGranted | ConsumeRejected | ConsumeResumed, Field(discriminator="result")]
+# running 下 D12 漂移**一律** ResponseError(E-CP-D12-MISMATCH)——HLD §8.3"以专用控制面错误码上报"字面（R9-02）；publishing 下不以错误返回（§2.2a，R11）
+class ReleaseOutcomeRequest(BaseModel): task_id: str; outcome: Literal["released","release_failed"]; reason: str = ""; remote_refs: list[str] = []   # 两值固定（HLD §4.2.5），**仅在实际执行后发送**（无执行的失败由编排同事务映射，§2.2a④）；reason 仅诊断、不参与映射；C-10 guard：连接 epoch == granted_epoch ∧ recovery_state ∈ {none, execution_permitted}
+class ReleaseReconcileReport(BaseModel): task_id: str; probe: Literal["confirmed_happened","confirmed_not_happened","indeterminate"]; remote_refs: list[str] = []   # 恢复臂对账上报（非 release node outcome，不触发 C-10；R10-01）；C-10a guard：连接 epoch == granted_epoch ∧ recovery_state == reconcile_required；多目标部分已出现 → 只能报 indeterminate
+class ReconcileProceed(BaseModel): kind: Literal["proceed"]                     # 原子许可通过：execution manifest 匹配 ∧ 无 pending(admin_finalize) ∧ 授权仍 consumed_by 本 task（连接 epoch == granted_epoch 由 guard 保证）→ recovery_state := execution_permitted（R10-02，R11 C11-09 措辞统一）
+class ReconcileRecorded(BaseModel): kind: Literal["recorded"]; reason: Literal["happened_mapped","not_happened_mapped","indeterminate_recorded"]   # happened → ledger 级映射 released；not_happened 且许可不通过 → 同事务 ledger 级 release_failed 映射（broker 不发布、不发 outcome）；indeterminate → recovery_state := indeterminate、Run 保持 publishing 走 C-11
+ReleaseReconcileResponse = Annotated[ReconcileProceed | ReconcileRecorded, Field(discriminator="kind")]   # R11：ReconcileDeny 删除（D12 不以拒绝臂表示，§2.2a）
+class ReleaseProbeReport(BaseModel): task_id: str; probe: Literal["confirmed_happened","confirmed_not_happened","indeterminate"]; remote_refs: list[str] = []; probe_seq: int   # 只探测通道上报（C-11a，R12；对应出向 release_probe_dispatch，R13）；只查远端、从不执行
+class ReleaseProbeResponse(BaseModel): result: Literal["happened_mapped","not_happened_mapped","indeterminate_recorded","retire_requested"]   # retire_requested：not_happened 而持有者未静默（R13，C-11a）
+class ReleaseDispatch(BaseModel): kind: Literal["execute"] = "execute"; run_id: str; task_id: str; release_plan_ref: ArtifactRef; token_id: str   # 仅执行型（R13：只探测拆为独立命令）
+class ReleaseProbeDispatch(BaseModel): kind: Literal["probe"] = "probe"; run_id: str; task_id: str; probe_targets: tuple[ReleaseTarget, ...]; fencing: FencingInfo; probe_seq: int   # 仅用于 recovery_state=indeterminate 或 recovery_mode=manual_only 的已核销者（§2.2d）；不含 release_plan_ref 与发布内容，broker 无从据此构造发布；token_id 只出现在 fencing 中作远端归因标识
+ReleaseDispatchPayload = Annotated[ReleaseDispatch | ReleaseProbeDispatch, Field(discriminator="kind")]
+class PendingRegisterRequest(BaseModel): run_id: str; event: PendingEvent
+class AdjudicateRequest(BaseModel): run_id: str; verdict: Literal["confirm_released","confirm_not_released","keep_unknown"]; evidence_refs: tuple[ArtifactRef, ...] = ()
+class AdjudicateResult(BaseModel): adjudication_id: str
+class ProbeDispatch(BaseModel): idem_key: str; version: int; probe_attempt: int; effect_class: str; params_ref: ArtifactRef; record_view: RecordView
+class RecordView(BaseModel): state: str; repeat_seq: int | None; updated_at: datetime
+class ProbeReport(BaseModel): idem_key: str; version: int; probe_attempt: int; result: ProbeResult
+class PostCloseCorrectionRequest(BaseModel): run_id: str; correction: CorrectionRequest
+```
+
+**approval socket**：内部命令 `DecisionSubmitCommand{request: ApprovalDecisionRequest, reviewer: str}`——reviewer 由 **Approval 服务**按 Review CLI 的 peer credential 映射得出后填入（外部 CLI 请求不含该字段）；编排进程信任 approval socket（Approval 服务属框架交付 TCB，socket peer 即认证）。响应 `DecisionSubmitResult{decision_id, token_id | None}`（二者编排事务内生成；plain 型 token_id=None）——release-approval 型事务 = 决定 + 新鲜度 CAS（§2.5）+ 授权记录 + gate CAS + resume outbox（outbox 项含 token_id 供 release dispatch）；plain 型 = 决定 + gate CAS + outbox。
+**broker socket**：建连即 `broker_hello` 握手取 epoch（按实例分配、连接绑定，§2.2d）；`heartbeat`（续期实例租约）、`authorization_consume`（§2.2a 四支，处理序③连接级校验）、`release_reconcile_report`（仅恢复臂后，C-10a guard）、`release_outcome`（两值，仅实际执行后，C-10 guard）、`release_probe_report`（仅只探测通道，C-11a guard）。
+**特权运维**：`AdjudicateRequest → AdjudicateResult`（载荷不含 request_id——幂等键在 Envelope 层，模型见载荷块；adjudication_id 编排事务内生成，重放返回同 id 与同结果——R5-02/R7-02 prose 与模型统一）——guard：Run=publishing ∧（强制 probe 后 unknown ∨ 对应 task `recovery_mode = manual_only`（失联 / 中断次数耗尽，R15））∧（verdict∈confirm_* ⇒ evidence_refs 非空）∧（confirm_not_released ⇒ broker task 静默已确认）；**manual_only 分支**：裁决前仍先执行只读强制 probe（经 release_probe_dispatch，manual_only 下对任一 recovery_state 合法，R16），probe 明确全部发生 → 只允许 `confirm_released`；明确全部未发生 → 只允许 `confirm_not_released` 且原 holder 已静默；部分出现或 unknown → 沿用既有证据规则；**只探测已因 K3 耗尽而暂停（`auto_probe_suspended = true`，R19）时**，强制 probe 按 unknown 处理，evidence_refs 须引用相应 RetirementEvent，运维可显式发起单次强制只探测（同受 §2.2d K2 结算），负向裁决仍须原 holder 静默；probe 结果与人工决定、证据引用同事务落账，不经 C-10 发送伪 outcome；`post_close_correction{run_id, CorrectionRequest}`。
+**pending**：`pending_register{run_id, event: PendingEvent}`——判别联合整体提交（各型载荷见 §2.4），dedup_key 为联合公共字段（CS-10 闭合）。
+**出向**：编排→broker `release_dispatch{kind=execute, run_id, task_id, release_plan_ref, token_id}` 与 `release_probe_dispatch{kind=probe, run_id, task_id, probe_targets, fencing, probe_seq}`（R13），端点仅受编排 UID；二者共用 §2.5 DispatchReceipt 出向协议。
+**通用 RPC envelope（R6-01/R7-02，HLD §8.5"命令幂等"的统一落地）**：全部 control-plane 命令经 `CommandEnvelope{request_id, command, payload}` 提交——**command 为封闭命令名枚举**（下方载荷模型块给出 命令名↔请求模型↔响应模型 的三列注册表；payload 按 command 解析）。**control-plane request_id 格式 = ulid**（§0.2 Skill 层 request_id 规则不适用于此层）。**处理序（全命令统一，R11 C11-07）**：① envelope 解析——失败（未知 command / 缺或非法 request_id / envelope 非法）→ FramingError，**不落 receipt、不占幂等域**；② payload 按 command 做 schema 校验——失败 → ResponseError(E-CP-VALIDATION)，**不落 receipt**（修正载荷后以同 request_id 重试正常受理，不构成 IDEM-MISMATCH）；③ 连接级校验（task 归属、broker 握手与 epoch，§2.2a）——失败按各自错误码返回，不落 receipt；**broker_hello 是未握手连接唯一允许的命令**：③ 对它只校验 socket peer 与经 /proc 核实的实例身份（不要求已有 epoch），当前 / 退役实例检查先于 receipt，首次 hello 的 epoch 分配与实例租约记录同一事务，同实例 hello 每次都先完成连接绑定再返回（§2.2d）；其余 broker 入向命令要求已握手、连接 epoch 为当前 epoch 且实例非 retiring（heartbeat 例外：retiring 实例的 heartbeat 仍受理，仅用于存活判断），含 broker_epoch 字段者再做载荷等值校验；④ 在幂等域查 receipt；⑤ 状态机 guard 与执行——其结果（含业务拒绝与本阶段的 ResponseError）作为首响应落 receipt。客户端收到 request_id=None 的 FramingError → 视为连接级协议错误：broker / approval / 特权运维 socket 关闭连接、重连（broker 须重新 hello）后对全部在途请求按 ACK 丢失重投；**worker 与 reconciliation worker 的 per-task socketpair 不可重连**（R12）：普通 worker——SDK 将全部在途请求置为失败，本 task attempt 以 sys.error 结束（效应记录在下一 attempt 启动时按 §4.2 对账）；**reconciliation worker（R13）**——编排终止当前 probe 进程组：本组尚无 receipt 则按 §4.3 恰一次合成 `synthetic_worker_loss`，消耗本 probe_attempt，沿 probe 重试 / 耗尽能力矩阵处理；已有 receipt 则复用，不另生成 task_complete、不提前终结业务 task。幂等域按 socket 角色：worker 数据面 = (task_id, attempt, command)、approval = (approval 服务, command)、**broker 入向 = (broker_epoch, command)（broker_hello 例外：(broker 实例身份, command)；§2.2d）**、特权运维 = (运维 principal, command)、**reconciliation = (idem_key, version, probe_attempt, command)、编排→broker 出向 = (token_id, command)，持久化于 §2.5 DispatchReceipt**（全方向覆盖）；保留期 = Run 存续 + 7 天（broker 入向域另需覆盖该 epoch 存续 + 7 天）；受理即持久化 receipt（request_id → payload digest + 首响应），同 id 同载荷重放返回首响应（ACK 丢失安全）、异载荷 → E-CP-IDEM-MISMATCH；**无语义豁免、无窗口淘汰（R8-03/R9-03 终案）**：全部命令在其幂等域存续期内保存**全部** (request_id → payload 投影 digest) 对——worker 域的存续期即 attempt 存续（attempt 终结后该域 receipt 随之退役，存储天然有界）；heartbeat/trace_append 的响应为固定 CommandAck，**不存响应、按需重建**（只存 digest 对，膨胀关切消解）；其余命令存 digest + 首响应。同 id 同载荷 → 首响应（或重建 Ack）；异载荷 → E-CP-IDEM-MISMATCH；无"视为新请求"路径。**出向命令（release_dispatch / release_probe_dispatch）**：唯一模型为 §2.5 DispatchReceipt 两事务协议（request_id = ulid，于事务①生成；同一 token 至多一个 intent）；broker 进程内以 request_id 去重；两种出向共用 DispatchReceipt 的送达 / 替代事务，业务续跑分别为（R14）：**execute**——按 §2.2d 与 C-09 核销或恢复，已核销且非 indeterminate 者须旧 holder 静默后恢复并对账，重放落到授权记录状态机（granted/resumed/rejected）；**probe**——仅用于已核销且（indeterminate ∨ manual_only，R16），不 consume、不返回执行许可，换实例仍只探测；发送只探测不以 holder 静默为前提，只有负向映射才需要静默，confirmed_not_happened 而 holder 未静默走 retire_requested 与新序号重新探测；未核销、或既非 indeterminate 也非 manual_only 的 probe 属非法组合，编排拒绝生成，同 id 异 digest → E-CP-IDEM-MISMATCH（R11 C11-04：v0.11 的"授权记录 dispatch receipt 子记录"表述删除）。响应统一 `CommandResponse`。复合变更单命令单事务；outbox/inbox 去重同 HLD §4.4。重放矩阵 CF-IPC-06 扩至含 reconciliation 与出向共五方向。
+
+### 5.2 受限扩展发布原语（封闭判别联合；HLD §8.3）
+```python
+class FencingInfo(BaseModel): run_id: str; token_id: str
+class GitPushOp(BaseModel):
+    op: Literal["git_push"]; repo: str; target_ref: str
+    content_commit: str                 # 由框架自已核销 manifest 的 series 构建的 commit digest
+    force: Literal[False] = False; fencing: FencingInfo
+class GerritReviewOp(BaseModel):
+    op: Literal["gerrit_review_push"]; repo: str; branch: str
+    content_commit: str; fencing: FencingInfo
+    # change_id 由 broker 构建 commit 时生成并回填（Change-Id trailer 与 fencing 同级固定），
+    # 业务 adapter 不得供给（P-05/CS-22）
+RestrictedOp = Annotated[GitPushOp | GerritReviewOp, Field(discriminator="op")]
+```
+校验（broker 执行前，逐条）：op 序列与已核销 manifest.targets **一一对应**（adapter/repo/branch/action 匹配：push_branch↔git_push、gerrit_review↔gerrit_review_push，多退少补皆拒）；content_commit 必须等于 broker 侧按 manifest（series+squash）自行构建的 commit digest（业务 adapter 无自由内容）；fencing 键固定。透传式原语（任意 REST）禁止；官方 adapter 需要的其余 API 操作在 broker 进程内的原语层实现、不经 RestrictedOp 暴露。
+
+### 5.3 数据密级
+```python
+class DataClass(IntEnum): public=0; build_log=1; internal_code=2; secret=3   # 全序即 IntEnum 序
+class ProviderPolicy(BaseModel): provider_id: str; allowed_max: DataClass    # 授权集 = ≤allowed_max
+class ProviderExecutionConfig(BaseModel):        # provider_policy_digest 的 digest 域（HLD D12——R4-03）
+    provider_id: str; provider_type: str
+    endpoint_identity: str                        # 规范化端点身份（scheme://host[:port]/path，凭据值除外）
+    trust_policy: dict[str, JsonValue]            # TLS/信任锚策略
+    routing: dict[str, JsonValue]                 # 模型绑定 / cascade 策略
+    allowed_max: DataClass
+# provider_policy_digest = digest(按 provider_id 的 UTF-8 字节序升序列表)；provider_id 文法 `^[a-z0-9_-]{1,64}$`
+# （ASCII 封闭——字节序与码点序一致）、全局唯一（重复拒绝）。endpoint_identity **完整词法文法（装载时校验，
+# 非唯一表示一律拒绝，R7-04）**：`https://<host>[:<port>]<path>` 或 `inprocess:<provider_id>`（进程内 fixture
+# 专用，CC C-vii 定案）。host = dns 名（label 文法 `[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?` 1–63 字符、以 `.` 分隔、总长 ≤253、
+# 无尾点、IDNA 已 punycode）| IPv4（四段 0–255 十进制、无前导零）| `[`+RFC 5952 canonical 小写压缩 IPv6+`]`
+# （非压缩形拒绝）；port 仅非 443 时出现、十进制无前导零、范围 1–65535；path 字符域 `[A-Za-z0-9._~/-]`
+# （禁空格/控制字符/百分号编码）、段禁 `.`/`..`/空段、无尾斜杠（根路径省略为空）、禁 query/fragment/userinfo；
+# `inprocess:<id>` 的 id **必须等于**同记录 provider_id（不等拒绝）。边界 vectors（CF-SM-13）：label 首尾连字符/空 label/64 字符
+# label/254 总长/端口 0 与 65536/path 空格/inprocess id 不等——各一 negative 与相邻 positive，随 golden vectors 交付。ProviderExecutionConfig **不含任何 secret 字段**
+# （凭据经部署凭据库引用，不入模型）；SecretStr 投影规则保留为将来字段的通则。
+# **golden vector（CF-SM-12 判定锚）**：输入
+# [{"allowed_max":1,"endpoint_identity":"https://llm.internal.corp/v1","provider_id":"fake_llm",
+#   "provider_type":"openai_compat","routing":{"cascade":[]},"trust_policy":{"ca":"corp-root"}}]
+# → provider_policy_digest = sha256:fe4ecac852d38fa16109eccad6db71607ae96c8152ed435408beb2ababeca45d
+# 端点改向必失配、密钥轮换不失配（CF-SM-12 两用例以此 vector 为基）
+```
+携带：密级权威 = Ledger 索引（blob_begin 出生标注、commit 落索引）；ArtifactRef.data_class 必填且框架以索引值校验，自报不符拒绝（sys.invalid_result）——worker 无降级路径（CS-23）；Report 头必填；EvidencePacket/消息聚合 = max(成员)；**缺失标签或索引损坏 → 按 secret 处理（fail-closed）**；LLM 调用（含 cascade 每跳）校验 payload_class ≤ provider.allowed_max。摘录组件内容升级责任照 HLD。
+
+### 5.4 修正
+```python
+class CorrectionRequest(BaseModel): original_adjudication_id: str | None; remote_refs: list[str]; evidence_refs: list[ArtifactRef]; disposition: str
+class CorrectionRecord(CorrectionRequest): correction_id: str; run_id: str; operator: str; created_at: datetime  # 服务端按 peer credential/服务器时钟生成
+```
+append-only；终局 artifact 不可变；仅经 ResultEnvelope.corrections 返回（单一事实源，§2.7）。幂等键 = (run_id, original_adjudication_id, digest(request))。
+
+### 5.5 EvidencePacket
+```python
+class ToolFact(BaseModel): tool: str; query: str; result: str; data_class: DataClass   # 工具按查询对象密级出生标注
+class LogExcerpt(BaseModel): ref: ArtifactRef; lines: str; data_class: DataClass
+class SourceExcerpt(BaseModel): path: str; start: int; end: int; content: str   # 有界：end-start ≤ 400；密级恒 internal_code
+class EvidencePacket(BaseModel):
+    facts: list[str]                     # 派生文本，密级=生成时所引成员最大（builder 计算）
+    negative_facts: list[ToolFact]
+    log_excerpts: list[LogExcerpt]; target_source_excerpt: SourceExcerpt | None
+    confidence: str                     # 定点字符串
+    data_class: DataClass               # = max(成员)，builder 计算
+```
+builder 校验：产 patch 请求 target_source_excerpt 非空；RawDataDetector；体积上限 256KB。
+
+---
+
+## 6. Conformance 用例注册表（判定权威在本文档；07 只实现 harness 并引用 case ID，不得改写期望）
+
+格式：每 case 一行 `ID | 前置/输入 | 动作（或崩溃/注入点） | 期望`。矩阵型 case 给出轴与**单元格期望规则**，07 枚举单元格执行。攻击面来自 HLD §11.3 全类别（B-4/M-01/P-03 对账补全）。
+
+### 6.1 CF-DSL（校验器）
+| ID | 前置/输入 | 动作 | 期望 |
+|----|----------|------|------|
+| CF-DSL-00a/b | 悬空 route.to / join.to 引用未声明名 | 加载 | 拒绝，rule_id=V-00 |
+| CF-DSL-02a/b | 未注册 agent_type / attestation 失效 | 加载 | 拒绝，rule_id=V-02（先于 V-05） |
+| CF-DSL-01a/b | V-01 字段适用矩阵越界（hitl 带 metric）/ 合法三型 | 加载 | 拒 V-01 / 过 |
+| CF-DSL-03a/b | 节点名占用 `fail_safe` / 三节点线性合法图 | 加载 | 拒 V-03 / 过 |
+| CF-DSL-04a/b | 同 (from,on) 双 route / fan-out 单条多元素 to | 加载 | 拒 V-04 / 过 |
+| CF-DSL-05a/b | on 拼错 status / 全 status 正确 | 加载 | 拒 V-05 / 过 |
+| CF-DSL-06a/b | 某 status 无路由且 default_route 缺失（YAML 删行）/ default_route 兜底 | 加载 | 拒 V-06（缺失即 schema 拒）/ 过 |
+| CF-DSL-07a/b | 未声明环边的可达环 / 声明齐备 | 加载 | 拒 V-07 / 过 |
+| CF-DSL-08a/b | wait_for 多列一源 / 与路由源集相等 | 加载 | 拒 V-08 / 过 |
+| CF-DSL-10a/b | 链式 join / 共同支配替代共同 fan-out | 加载 | 均拒 V-10 |
+| CF-DSL-13c | 非 release 路径 hitl 的 approved 出边不直达 release | 加载 | 通过（V-13 限定域断言） |
+| CF-DSL-09a | 同节点互斥 outcome 双路由入同 join | 加载 | 通过 |
+| CF-DSL-09b | 非互斥多入边汇聚于来源节点 | 加载 | 拒，V-09 |
+| CF-DSL-09c | 互斥入边汇聚于中间节点再入 join | 加载 | 通过（CS-05 形态） |
+| CF-DSL-11a | 互斥 outcome 致来源必然缺席 | 加载 | 拒，V-11 |
+| CF-DSL-12a/b | 分支内回环 / 跨祖先回环 | 加载 | 拒，V-12 |
+| CF-DSL-13a | V-13b 反例：release-approval hitl 无支配 ReleasePlan 生产者 | 加载 | 拒，V-13b |
+| CF-DSL-13b | 同深双 ReleasePlan 生产者 | 加载 | 拒（歧义 fail-closed） |
+| CF-DSL-14a/b | terminal 无 success_on 或带出边 / 合法 terminal | 加载 | 拒 V-14 / 过 |
+| CF-DSL-15a/b | metric 生产者不支配 gate；field 在 produces 多类型体歧义 / 唯一支配 | 加载 | 拒 V-15 / 过 |
+| CF-DSL-16a/b | retry.on 含 sys.invalid_result / 三值合法 | 加载 | 拒 V-16 / 过 |
+| CF-DSL-17a/b | 分型判定：release 路径 hitl 编译产物标 release-approval / 旁路 hitl 标 plain | 加载 | 分型正确落编译产物 |
+| CF-DSL-FLAG | HLD §4.2.1 旗舰 YAML **原文**与 compiler_bench_only 原文 | 加载 | 全部通过且编译产物字段齐全（R2-01 断言） |
+| CF-DSL-PROP | 随机图生成器（含环/嵌套 fan-out/join，参数化规模） | 批量加载 | 性质断言（model checking）：通过图必满足 V-09 基数、V-11 可达、**V-07 环全覆盖预算、V-13 release 必经 hitl**；拒绝图给出 rule_id；无 panic |
+
+### 6.2 CF-SM（状态机）+ CF-LED（提交点注入）
+| ID | 前置 | 动作 | 期望 |
+|----|------|------|------|
+| CF-SM-01 | 全状态 | 全命令×全状态矩阵 | 单元格规则：§2.1 guard 列合法者迁移、其余 IllegalTransition 拒绝并审计、状态不变 |
+| CF-SM-02 | running，他分支在飞 | **真实串联** decision_submit → outbox 消费（不得以手工 waiting gate 代替提交后状态） | Run 保持 running；在飞 task 不受扰；下游 durable dispatch 恰一次；消费不再改 gate（gate 已 resolved 且与 outbox 一致即受理）；决定提交前/后、消费提交前/后四点 kill 均恰一次（R11 C-01） |
+| CF-SM-03 | awaiting_patch | TTL 到期 | closed(cancelled) |
+| CF-SM-04 | queued | run_budget 触顶 | C-13 → closed(fail_safe) |
+| CF-SM-05 | publishing | 四类 pending 逐一登记 + released/release_failed × pending 全组合 | §2.2b 序逐组合断言（含 admin_finalize 最优先、FeedbackReport 载荷来自 PendingEvent payload） |
+| CF-SM-06 | running + 三类授权态 | authorization_consume | ①核销+publishing ②不核销+closed(release_failed 映射) ③E-CP-D12-MISMATCH+授权不动+C-14 |
+| CF-SM-07 | publishing/unknown | 裁决四形态 | 证据缺失拒；broker 未静默拒 confirm_not_released；重复 adjudication_id 同结果；并发 CAS 单胜 |
+| CF-SM-08 | 重启，execution manifest 不匹配 | 恢复 | 不恢复引擎，C-14 administrative finalize（版本漂移 FeedbackReport） |
+| CF-SM-09 | publishing 中进程重启 | 恢复 | 对账优先：先 broker/远端 probe，禁 C-14；不可判定保持 publishing |
+| CF-SM-10 | paused | 真实串联 decision_submit → resume（release-approval / plain-decision 两型）+ TTL 与人工决定竞争 | paused→queued→running 全链（含槽竞争）；决定与 TTL 仅一方胜出；四类（paused/running × release/plain）各只 dispatch 一次（R11 C-01） |
+| CF-SM-11 | gate waiting + ttl_min | C-08c 到期 | outcome=gate_expired 走路由；origin=ttl；verdict 枚举不受扰 |
+| CF-SM-12 | provider 配置两变体，Run=running | 端点改向 / 仅密钥轮换 | 前者 D12 失配 → C-14；后者不失配（R4-03） |
+| CF-SM-12b | 端点改向，Run=publishing | 复核 | pending(admin_finalize) 登记，不触 C-14（R10-06） |
+| CF-SM-13 | endpoint_identity vectors：§5.3 边界七组 + canonical 五组（尾点域名 / 非压缩 IPv6 / 前导零端口 / 显式 :443 / 点段路径）+ 正例（空 path、单段 path、inprocess:fake_llm） | 装载校验 | 每 negative 拒绝且定位规则；相邻 positive 通过（R8-05/R9-06） |
+| CF-LED | 凡 §2.1/§3.3/§3.3a/§5.1 标注"单事务"的命令 | **参数化通则**：每命令提交点前、后各注入一次 kill | 前注入=命令未发生（幂等重放同果）；后注入=效果完整恰一次（M-02 规则；07 按命令清单枚举点位） |
+
+### 6.3 CF-EF（效应）
+| ID | 前置 | 动作 | 期望 |
+|----|------|------|------|
+| CF-EF-01 | 各态记录 | 迁移表全边尝试 | 合法边成功；非法边拒绝（含 claimed→succeeded 仅对账路径可达） |
+| CF-EF-02 | claimed/running 遗留 × **supports_probe × replay_safe 四组合** × probe 四值 | attempt 启动对账 | 单元格规则同 §4.3（probe 优先）：confirmed_happened→succeeded 复用；not_happened→abandoned；indeterminate→重试至总尝试上限后——**∧replay_safe→abandoned+版本化重放（fallback）**、∧¬replay_safe→unknown+sys.error；not_supported∧replay_safe→退役重放；皆无→unknown+sys.error |
+| CF-EF-03 | 不可重放效应，probe indeterminate | 对账 | **零重放断言**（不得当 not_happened） |
+| CF-EF-04 | failed 记录同参再调用 × 两 disposition | side_effect | raise 返回存储 error / retry_new_version 版本化至上限后 raise |
+| CF-EF-05 | 跨 attempt 定态 {succeeded,abandoned,unknown} + 干净终态 failed × 异参新 claim | claim | succeeded/abandoned 放行新键（succeeded 不跨参复用）；unknown 无新键（task 已终止）；failed × **异参** → 放行新键（准入不受 disposition 辖）；failed × **同参** → 按 disposition 展开（raise → 返回存储 error；retry_new_version → 同键版本链至上限后 raise）——与 §4.1 idem_key 定义一致（R3-03 终修） |
+| CF-EF-06a | 代码级重复 call_id 命名 | conformance 静态检查 | 拒绝（唯一命名断言） |
+| CF-EF-06b | 同 attempt 同 call_id 未决 | 异参 claim | 拒绝，sys.invalid_result |
+| CF-EF-09 | v1 abandoned、v2 running | v1 迟到 succeeded transition | (key,version,state) CAS 拒绝并审计，v2 不受污染（R4-02） |
+| CF-EF-10 | ProbeDispatch 已计数 | 派发前/执行后/回写前三点 kill；spawn 明确失败；已启动后丢失 | 逐点断言 attempts/next_probe_at/receipt(origin, 保留 digest)/spawn 次数；未尝试重派不递增；两类合成各消耗一次；连续丢失有界耗尽后 ∧replay_safe→abandoned+重放、∧¬replay_safe→unknown+sys.error（两终态分行）；迟到真实回报对合成 receipt 拒并审计 |
+| CF-EF-07 | 双同参调用首成后崩溃 | 重试且控制流变化 | effect_call_id 锚定：不错配（原 R6-01 注入） |
+| CF-EF-08 | claim | 响应联合三形态 | execute/reuse/error 各自载荷齐全；reuse 返回存储 EffectResult 逐字节一致 |
+
+### 6.4 CF-ACT / CF-SER
+| ID | 前置 | 动作 | 期望 |
+|----|------|------|------|
+| CF-ACT-01 | 六规则逐条构造 | 传播 | ActivationRecord 字段逐项断言（含 root、继承、loop_vector 复制/递增） |
+| CF-ACT-02 | 嵌套子 activation 带计时器 | 环边采用 | 条件③级联退役 + 全部计时器同事务作废 |
+| CF-ACT-03 | 旧 activation 首达后 series 推进 | 旧计时器到期 | 审计化 no-op，无误杀 |
+| CF-ACT-04 | 同 series 并发双 activation | 各自到达/超时 | 独立成组独立超时互不干扰 |
+| CF-ACT-05 | superseded 祖先链 | join 消费/分派/timeout | CAS 拒绝 + 死 scope 分派拒绝并审计 |
+| CF-ACT-06 | 环 N 轮迭代（含嵌套 fan-out） | 每轮取父链 | 深度恒定（规则 6 断言） |
+| CF-ACT-07 | 内层 join 汇合 | 下游参与外层 join | 父 scope 分派成组成功 |
+| CF-ACT-08 | 到达 series ≠ current | join 到达 | stale 丢弃并审计、组不受污染、同 series 新到达照常成组（R-04） |
+| CF-SER-01 | 双 task 并发完成 | series CAS | 单胜；败者 sys.error 可 retry |
+| CF-SER-02 | 待审批+未核销授权+旧 activation | series 推进 | 三失效同事务 |
+| CF-SER-03 | publishing | task_complete | series 步骤降级 pending；结果/artifact 照常 |
+| CF-SER-04 | 增删相消 / 异 patch 同果两组 | tree_digest | 等价 tree 同 digest（golden vectors） |
+| CF-SER-05 | worktree 应用后 | BuildExecutor 复核 | OID 不一致 → sys.error |
+| CF-SER-06 | submit_patch | §3.3a 单事务 + request_id 重放 + CF-LED 点位 | 初始 series/lineage/tree_digest/current 齐备；重放同 series_id |
+| CF-SER-07 | 无 candidate 任务（UT 型） | task_complete 分支 A | current/失效链/授权全不动；结果与 artifact 照常（S-01） |
+| CF-SER-08 | candidate 引用四类违例 | task_complete | 在册1引用None / 在册0引用非None / 引用他task / 异载荷二次 submit → 逐类拒绝 sys.invalid_result |
+| CF-SER-09 | HandoffResult.series_id ≠ TaskInput.series_id；Report 头跨 series | task_complete | 统一前置校验拒绝 sys.invalid_result（跨 series 伪造，R5-01） |
+| CF-SER-10 | attempt1 登记 candidate 后崩溃 | attempt2 启动对账 + 重新登记 + 完成；各提交点 kill | 旧项原子 discarded、新登记不受阻、分支 B 走通（恢复不自锁，R6-03）；kill 点幂等 |
+| CF-SER-11 | 同 attempt 内 task_complete handler 的非 Ledger 缓存被清空 | task_complete 分支 B | 仅自 Ledger（CandidateRecord + payload_ref）重建完成 lineage/tree_digest（R7-06/R8-06 改写：不声称跨进程重启消费旧 candidate；重启路径由 CF-SER-10 覆盖） |
+
+### 6.5 CF-AUTH / CF-IPC / CF-BLOB / CF-SKILL / CF-DC / CF-COR / CF-REC / CF-UP / CF-FIX
+| ID | 前置 | 动作 | 期望 |
+|----|------|------|------|
+| CF-AUTH-01 | 三分量各自过期 | decision_submit | 新鲜度 CAS 逐分量拒绝并提示重审 |
+| CF-AUTH-02 | 单授权 | 并发双 consume | 恰一成功 |
+| CF-AUTH-03 | 授权已过期 | consume | 不核销；closed(release_failed, reason=authorization_expired) |
+| CF-AUTH-04 | D12 digest 漂移，**Run=running（核销前）** | consume | E-CP-D12-MISMATCH；授权不动；C-14 触发 |
+| CF-AUTH-04b | D12 漂移检出，**Run=publishing** | 恢复臂 consume / reconcile 原子许可 / 其余复核点 | **不返回 E-CP-D12-MISMATCH**：consume → resumed（漂移不阻断对账）；pending(admin_finalize) 恰一次登记；三对账结果分别闭合——happened → closed(succeeded) 且 RunSummary 含该 pending；not_happened → 同事务 release_failed 映射，admin_finalize 最优先（版本漂移 FeedbackReport），响应 Recorded(not_happened_mapped)；indeterminate → C-11（R10-06，R11 C-04/C11-03） |
+| CF-AUTH-04c | 升级重启组合：broker 新实例 + framework_version 漂移，Run=publishing | broker_hello → consume → reconcile（三种结果各一） | 同 CF-AUTH-04b 三结果断言；不得滞留于"D12 错误阻断对账"（R11 C11-03） |
+| CF-AUTH-05 | DispatchReceipt=completed、broker 在发布中崩溃（编排未重启）；新实例 broker_hello 取更高 epoch、旧 holder 静默（lease 回收 ∧ pgid reap） | §2.2d 持有者更替重派 → authorization_consume → release_reconcile_report | 重派恰一次（新 receipt recovery=true）；resumed、granted_epoch 更新、recovery_state=reconcile_required、不重复核销、状态不迁；对账三结果：happened→ledger 级 released 关闭 / not_happened→Proceed、recovery_state=execution_permitted、执行后 release_outcome / indeterminate→recovery_state=indeterminate、保持 publishing 走 C-11（R11 C-03/C11-05） |
+| CF-AUTH-05b | resumed 后 probe 期间新检出 D12 漂移 / 已登记 pending(admin_finalize) 两例 | release_reconcile_report(not_happened) | 两例均同事务 release_failed 映射关闭（admin_finalize 优先），响应 Recorded(not_happened_mapped)；broker 不发布、不发 release_outcome；收尾事务前后 kill、ACK 丢失重放得同响应（R10-02，R11 C-04） |
+| CF-AUTH-05c | 旧 holder lease 已回收但 pgid 未 reap | 新实例 hello 后的重派扫描 | 不重派、告警；静默确认后周期任务重派（R11 C11-05） |
+| CF-AUTH-05d | 授权未核销（Run=running）、broker 在 ACK 后 consume 前崩溃 | 新实例 hello | 无需静默等待即重派；新实例正常 consume → granted；旧实例连接 epoch 不现行、无法核销（R11 C-03） |
+| CF-AUTH-06 | RestrictedOp 序列 | 一一对应校验 | 多/少/异 ref/异 content_commit/自供 change_id 五拒 |
+| CF-AUTH-07 | series 推进后遗留 gate 等待项 | 迟到 decision / gate 触发 | 等待项已作废 → decision 拒绝提示重审；gate 触发时 series 新鲜度校验（陈旧 series 进 gate 独立 case） |
+| CF-AUTH-08 | 同 task 两个 request_id 同 epoch | 串行/并发 consume | 恰一 granted，另一 rejected(already_consumed)——不得出现 granted+resumed 双许可（R9-01） |
+| CF-AUTH-09 | 旧 broker 未静默（进程组存活）时新 epoch consume | consume | 拒绝 rejected(holder_not_quiesced)（旧执行静默前置） |
+| CF-AUTH-09b | 旧 holder lease 过期但 pgid 未 reap | 新 epoch consume / confirm_not_released | 均拒绝（静默为合取，§2.2d；R11 C11-01） |
+| CF-AUTH-09c | 旧实例 cgroup 子树内仍有进程（含 fork 出、setsid 逃逸出进程组、或位于子 cgroup 中的发布进程——根 cgroup.procs 为空而 populated=1） | 静默判定 | 不 reclaimed、不静默；不授予恢复执行权、不作负向映射（R12，R13 改按 cgroup，R14 改按子树 populated） |
+| CF-AUTH-09d | 旧实例 pid 被无关进程复用、starttime 不同；租约已 reclaimed 且实例 cgroup 为空 | 静默判定 | 判为静默，不把无关复用 pid 当旧 holder（R13 补前置） |
+| CF-AUTH-09e | 同样 pid 复用，但实例 cgroup 内仍有发布子进程，或租约尚未 reclaimed | 静默判定 / 新 epoch 恢复 / 负向 probe 映射 | 不静默；不授予恢复执行权、不作负向终局（R13） |
+| CF-AUTH-09f | launcher 回收过程崩溃 | kill 前 / 后、子树为空确认前 / 后、reclaimed 提交前 / 后；同名 cgroup 目录被重建；子树读取失败或清理超时 | 按持久化绑定继续回收；同名重建不沿用旧证明；读取失败或超时不 reclaimed、保持等待并告警；FakeLauncher 区分"已请求 kill"与"子树已空"，证明成立前新 epoch 的恢复许可与负向终局均为 0 次（R14） |
+| CF-AUTH-10 | 他 task consume，Run=publishing | consume | rejected(already_consumed)，Run 状态不变（publishing 仅经 outcome/probe 关闭） |
+| CF-AUTH-11 | 首次 granted 的 ACK 丢失（现实形态：编排重启或 socket 重建导致断连） | 同一 broker 实例重连 hello（得同一 epoch）后以同 request_id 重投 | 仍返回 granted（同 epoch 域 receipt 先于 guard，R10-07，R11 C11-02） |
+| CF-AUTH-11b | 新 broker 实例复用旧实例的 request_id | consume | 不命中旧 epoch 域 receipt，走 guard 进入恢复臂（resumed 或 holder_not_quiesced）（R11 C11-02） |
+| CF-AUTH-12 | broker_epoch 与连接 epoch 不等 / 未握手即 consume / 连接 epoch 非当前 epoch | consume | E-CP-FORBIDDEN，不落 receipt（R10-04，R11） |
+| CF-AUTH-13 | E1 对账 not_happened 获 Proceed 后 broker 崩溃；E2 resumed、配置漂移、以同一逻辑 request_id 上报 not_happened | release_reconcile_report | 不复用 E1 的 Proceed（不同 epoch 域）；按 E2 的原子许可判定（漂移 → not_happened_mapped）；同 epoch 不同 request_id 第二次上报 → E-CP-ILLEGAL-STATE（每 epoch 至多一次许可）（R11 C-02） |
+| CF-AUTH-14 | 旧实例在死亡前发出、晚到的 release_outcome / reconcile_report（新实例已获许可） | 送达 | E-CP-FORBIDDEN + 审计，不关闭当前执行（R11 C-02/C11-01） |
+| CF-AUTH-15 | epoch 分配 | 编排重启后新实例 hello；同实例重连；低 epoch 实例再 hello；`2^53-1` / `2^53` 边界 | 计数器大于重启前最大值；同实例同 epoch；低 epoch 实例 E-CP-FORBIDDEN；`2^53-1` 接受、`2^53` 拒绝且不回绕（R11 C11-02/C-06） |
+| CF-AUTH-16 | resumed 后未对账直接发 release_outcome | release_outcome | E-CP-ILLEGAL-STATE，Run 不变（recovery_state=reconcile_required；R11 C11-06） |
+| CF-AUTH-17 | indeterminate 记录后：同 epoch 再次上报 reconcile；只探测通道上报 not_happened 且 granted_epoch 持有者已静默 | release_reconcile_report / release_probe_report | 前者 E-CP-ILLEGAL-STATE；后者 release_failed 映射（同一观测唯一终局；R11 C11-06，R12 改经 C-11a） |
+| CF-AUTH-17b | E2 报 indeterminate 后崩溃，E3 hello | 重派扫描 / consume / 只探测 | 不发 execute 重派、改发 release_probe_dispatch；consume → rejected(recovery_indeterminate)；只探测 → not_happened 且 E2 已静默 → release_failed（R12 Codex C-04 / CC C12-03） |
+| CF-AUTH-17c | 只探测报 not_happened 但持有者未静默 | release_probe_report | 响应 retire_requested、持有者实例 retiring、Run 保持 publishing；静默确认后以新 probe_seq / 新 request_id 重新探测，not_happened → 恰一次 release_failed 映射；清理失败只告警、不重派执行（R12，R13） |
+| CF-AUTH-17d | 只探测报 happened；部分目标已出现 | release_probe_report | 前者 released 映射；后者只能报 indeterminate、保持 publishing（R12） |
+| CF-AUTH-17e | 持有者 E2 存活并报 indeterminate，此后无实例更替 | 周期任务 | 按 probe_interval 发出 release_probe_dispatch；报 happened → released 映射；报 indeterminate → 下一周期继续；task 不因发布时限进入 retiring（R13） |
+| CF-AUTH-17f | 只探测路径的结构约束 | 篡改 kind=execute / 复用旧 consume、reconcile request_id / 伪造旧 epoch / 只探测后发 release_outcome；probe 路径调用写原语 | 均不执行发布原语（③或 guard 拒绝）；FakePublisher 写调用计数 = 0，否则 conformance 失败；ReleaseProbeDispatch 中不存在 release_plan_ref（R13） |
+| CF-AUTH-18 | hello 载荷 pid/pgid/start_time 与 SO_PEERCRED + /proc 不符 | broker_hello | E-CP-FORBIDDEN，不分配 epoch（R12 CC C12-02） |
+| CF-AUTH-19 | broker 断连超过租约时长未续期 / 未超时重连 | — / broker_hello | 前者 lapsed 并触发静默判定流程；后者保持 live、同 epoch（R12） |
+| CF-AUTH-20 | release task 阶段期限（awaiting_consume / awaiting_outcome / awaiting_reconcile）到期而 broker 心跳正常；特别注入 proceed 提交后 ACK 前、ACK 后执行前、执行中 task 失联；阶段定时器提交前后编排重启 | 编排定时 | 实例 retiring（除 heartbeat 外全部命令 FORBIDDEN）→ launcher 写 cgroup.kill 后即可上线新 epoch；未耗尽且未核销者立即重派、正常 granted；已核销 execute 恢复等原 holder reclaimed 后 resumed；重启不重置期限；retiring 实例再 hello 被拒；无法清理只阻塞相应已核销执行与负向终局（R12 Codex C-03，R13 改按阶段期限，R15 预期按新实例不等回收统一） |
+| CF-AUTH-20b | recovery_state = indeterminate 的 task 超过发布时限 | 编排定时 | 不 retiring，只重发只探测请求（R13） |
+| CF-AUTH-20c | lapsed 实例 | 租约超时 | 进入同一 launcher 回收流程，cgroup 为空后才 reclaimed（R13） |
+| CF-AUTH-20d | 失联次数上界 | FakePublisher 每次 push 耗时都超过 awaiting_outcome 期限；awaiting_reconcile 同理；未核销 task 反复 awaiting_consume 到期 | 已核销：第 max_task_losses 次失联后不再重派、保持 publishing、告警，broker 只被回收 max_task_losses 次；未核销：同事务撤销授权、release_failed(dispatch_loss_exhausted) 映射；同实例其他 task 随之重派但 loss_count 不变（R14） |
+| CF-AUTH-20e | 新实例拉起不等旧实例回收 | 旧实例 cgroup.kill 后子树迟迟不空（进程处于 D 状态） | 新实例上线取新 epoch；未核销 task 立即重派并正常 consume；已核销 task 保持等待并告警；旧实例命令一律被拒（R14） |
+| CF-AUTH-20f | 阶段期限与完成事件竞争 | 完成事件先提交 / 失联判定先提交 | 前者旧期限失效、不 retiring；后者后到结果被连接守卫拒绝、新实例对账；不存在二者同时生效（R14） |
+| CF-AUTH-20g | 影响上界与计数约束（K1–K3，与归因策略无关） | 毒丸 P 与无辜 B 永久同处一个实例，分别在 (i) 参考策略 ref-v1 与 (ii) 从不计数的测试策略 NullAttribution 下运行；核销前毒丸（含 ACK 前崩溃）；已核销 / 未核销两类；判定事务提交前后 kill 编排 | 两种策略下 P、B 都在至多 max_task_affected 次任务域事件后耗尽并按授权实际状态分流（未核销 release_failed(dispatch_loss_exhausted)、已核销 manual_only），无无限循环；每条事件的 charged_task_ids ⊆ bound_task_ids、同一事件对同一 task 各计数至多一次（model-based 断言）；重启不重置三种计数；配置 max_task_affected < max_task_losses + max_task_interrupts 被加载拒绝（R15–R19） |
+| CF-AUTH-20h | 定时器代次 | A 到期而快照仅 {A}；同一到期事件重复 / 重启重放 / ABA；构造 bound_task_ids 为空的 phase_deadline 判定 | 同一事件只结算一次、只一个替换实例；旧代到期事件忽略；空快照的 phase_deadline 被拒绝提交并告警（R15，R19 修订；实例级停滞下的归因移至参考策略验收 CF-STR-02） |
+| CF-AUTH-20i | launcher 上界与跨任务熔断（K4） | exec 失败 / hello 前退出 / hello 超时 / hello 后无绑定即 lapsed / 已完成两个 task 后无绑定失效（completed receipt 仍保留）；绑定建立与 lapsed 判定并发；spawn 记录与 hello 各点 kill launcher；FakeBroker 每次 consume / resumed 都成功、随后处理任意 task 都崩溃（与载荷无关）+ 持续流量；同一 P 多次故障；两个不同毒丸；两次故障之间只有 ACK / consume / resumed；之间有一次正常发布结案；FakePublisher 令全部 task 远端超时；窗口登记 / 清零 / 熔断提交前后重启 | 前五类归 start_health 且恰计一次，hello 前事件 broker_epoch 为空；判定先提交则禁止新绑定；连续达到 max_start_failures 即停止自动拉起；载荷无关崩溃在至多 max_distinct_task_faults 个不同 task 登记后停止自动拉起，中间阶段完成不重置窗口；同一 P 重复故障不扩大窗口；两个不同毒丸可触发暂停（接受）；正常结案清零窗口；远端全面超时不触发熔断、产生"远端或执行停滞"告警；controlled_reclaim 与多绑定未计数事件不进入窗口；重启保留窗口与熔断状态（R15–R19） |
+| CF-AUTH-20j | 耗尽后的人工出口 | manual_only × recovery_state ∈ {none, execution_permitted, reconcile_required, indeterminate} × 只读 probe 确实经 release_probe_dispatch 送达 × 远端全部发生 / 全部未发生 / 部分 / 未知 | 全部发生只允许 confirm_released；全部未发生须原 holder 静默后 confirm_not_released；部分 / 未知沿证据规则；旧 receipt 不能恢复执行；决定事务前后崩溃仅一次终局；FakePublisher 写计数为 0；全部发生时 confirm_not_released 被拒；manual_only 下 probe 结果只作证据、不自动映射（R15，R16 补 probe 载体） |
+| CF-AUTH-20k | 独占预约的释放（K5） | 在参考策略下，隔离头 A 分别：正常 H/F 终局且 epoch 不变；转 indeterminate；K3 耗尽转 manual_only；draining 中授权过期 / 关闭；所在实例退役；每种情形都已有暂缓的 execute 与 probe；业务关闭、清头、唤醒消费各提交点 kill；旧 selection_seq 的通知晚到 | 每种情形都在同一事务释放预约并写唤醒，暂缓的合法项最终发送，之后才选下一个隔离头；正常阶段切换不释放；旧 selection_seq 通知不释放新隔离头；计划性回收与阶段期限竞争仍只归一个域、只结算一次；无无唤醒的暂缓项（R19，原通道排空用例移至 CF-STR-03） |
+| CF-AUTH-20l | recovery_mode 守卫 | manual_only task 上的 consume / 恢复臂 / execute 派发 / 只探测自动映射；实例 retiring 后、reclaimed 前的已核销 task | consume 与恢复臂被拒、不生成 execute 派发、只探测结果只记录；该区间 recovery_mode 为 waiting_holder，执行期限不武装（R16，R17 补进入时点） |
+| CF-AUTH-20m | 授权实际状态与 consume 单胜 | 暂缓或独占等待中的未核销 P 在 intent 后发送前、ACK 前、consume 前分别崩溃，旧 cgroup 永久非空；consume 与退役并发 | P 不等待不存在的持有者，在新实例按 K3 有限关闭或先授权过期；consume 先胜 → 按已核销处理、等原 holder 静默，退役先胜 → 旧 consume 被拒（R18，R19 改为与策略无关的表述） |
+| CF-AUTH-20n | 计划性回收 | C-11a retire_requested（当前 / 旧持有者两例）、isolation_drain、已登记的 planned_restart、未登记的运维重启；回收前后重复请求、租约随后 lapsed、launcher 重启 | 前三者 domain = controlled_reclaim、所有计数零增量、不进入通道、launcher 连续失败计数不变，只生成一个事件；未登记重启按 lapsed 归责（R18） |
+| CF-AUTH-20o | 暂缓 intent 生命周期（K5，按 kind 分型） | 暂缓 × 编排重启（同 epoch / 旧 epoch 两例）；暂缓中换实例；放行与 lapsed 判定并发；暂缓中 task 关闭 / 置 manual_only / 转 indeterminate；跨原期限后才放行；同 id 重送；暂缓的 U probe 与 manual_only × 四种 recovery_state 的 probe，各在同 epoch / 换 epoch、原 holder 静默 / 未静默、授权原 expires_at 已过、放行前后 kill 下放行 | 重启不按 (a) 重送，由唤醒放行，旧 epoch 暂缓项经替代协议放行；判定先提交则不放行、不构成绑定；execute 放行写 awaiting_consume 与期限（自放行起算、重送不刷新），对 indeterminate / manual_only 拒绝；probe 放行不要求静默、不写 awaiting_consume、不建立执行绑定、不武装执行期限，送达只读 adapter，FakePublisher 写计数 0，manual_only 下不自动结案；task 终结作废两类暂缓项，转 indeterminate / manual_only 只作废 execute；关闭与放行 CAS 单胜，不留阻塞 token 的废弃 intent（R18，R19 修订） |
+| CF-AUTH-20p | 执行绑定的结束 | 历史 completed receipt + 在飞毒丸 P；与 P 同实例的 indeterminate task 与 manual_only task；绑定结束与退役判定并发 | bound_task_ids 只含当时真正承担执行的 task（仅 {P}；ref-v1 下 P +1）；未完成且已 ACK 的 task 仍计入；同实例 indeterminate task 的在飞只探测只进入 probe_task_ids（R18，R19 修订） |
+| CF-AUTH-20q | 只探测在飞进入快照（K2、K3） | 实例上只有 indeterminate task U 的只探测在飞时 lapsed；U 的只探测与单个 execute B 同处时 lapsed；U 的只探测反复令实例崩溃，探测间隔长于 launcher 稳定期 | 前者 domain = task、U 的 affected_count +1、launcher 启动 / 健康计数不变；后者 U 与 B 的 affected_count 各 +1，loss / interrupt 只可能计给 B（ref-v1 的已知局限，记入度量）；U 在 max_task_affected 次后置 manual_only 与 auto_probe_suspended，周期任务与 hello 扫描不再自动探测，C-11 可在强制 probe 按 unknown 时裁决且 evidence_refs 引用事件，负向裁决仍须静默；不出现按探测间隔无限崩溃（R19） |
+| CF-AUTH-20r | 退役事件模型 | 空 / 单 / 多绑定与含只探测的事件分别序列化往返；交错存入两条事件后推进通道再重启 | 每条事件的 bound_task_ids、probe_task_ids、charged_task_ids 不随通道或后续事件变化；AST / schema 断言这些字段属于 RetirementEvent、IsolationChannel 不含快照字段（R19） |
+| CF-AUTH-21 | hello 的连接绑定 | 首次未握手 hello；hello 响应丢失后新 socket 同 request_id 重放；退役实例重放 hello | 首次成功、此前 consume 拒绝；重放仍完成新连接绑定、旧连接不可用、随后 consume 成功；退役实例不能凭历史 receipt 回来（R12 Codex C-02） |
+| CF-IPC-01 | worker socket | 发送特权命令 | 不可达/拒绝并审计 |
+| CF-IPC-02 | worker A 连接 | 为 task B 提交 side_effect | 拒绝并审计 |
+| CF-IPC-03 | deploy 资产真实 UID/权限 | E2E 全链；broker 进程尝试迁出到父 cgroup | 隔离断言全过；迁出 → EACCES（R15） |
+| CF-IPC-04 | outbox 项（gate 已 resolved） | 重复投递 | 同结果、不重复建 task、不再次改 gate（R11 C-01） |
+| CF-IPC-05 | 编排失联 + GBS 孙进程存活 | 心跳超时 | worker killpg 自杀含孙进程；probe 对账续 |
+| CF-IPC-06 | 五方向各一命令（worker / approval / broker 入向 / reconciliation / 编排→broker 出向） | 同载荷重放 / 异载荷同 id / ACK 丢失后重放；heartbeat 与 trace_append 长时程（>10⁵ 次）后重放旧 id | 首响应复用（Ack 重建）/ E-CP-IDEM-MISMATCH / receipt 复用；出向经 §2.5 DispatchReceipt + 状态机去重（同 id 异 digest 拒；同 token 第二个 intent 拒）；**旧 id 重放仍复用/拒绝，无"视为新"** |
+| CF-IPC-07 | 同 socket 两命令并发 | 反序完成 | 客户端以回显 (request_id, command) 正确关联（R9-05） |
+| CF-IPC-09 | 未知 command / 缺或非法 request_id / 已知 command 载荷非法 | 提交；随后以同 request_id 提交合法载荷；request_id=None 的 FramingError（按 socket 角色三例） | 前两者 FramingError（关联字段可空、raw_command 回显）且**无 receipt 落账**；后者 ResponseError(E-CP-VALIDATION) 正常回显且不落 receipt，修正后同 id 正常受理（非 IDEM-MISMATCH）；null request_id：broker socket → 断开重连、重新 hello 后重投得首响应；worker socketpair → 在途请求置失败、本 attempt sys.error、下一 attempt 对账在途效应；reconciliation worker → 无 receipt 恰一次合成 synthetic_worker_loss、消耗本 probe_attempt，已有 receipt 复用，与 CF-EF-10 交叉（还有次数 / 已耗尽 × replay_safe 两值），重复退出通知不双计数、不越权发 task_complete（R10-05，R11 C11-07，R12 C12-04，R13） |
+| CF-IPC-10 | 出向 release_dispatch / release_probe_dispatch（按载荷类型与 recovery_state 分组：execute——未核销 / 已核销且非 indeterminate，后者恢复须先静默；probe——仅已核销且（indeterminate ∨ manual_only，后者覆盖 recovery_state ∈ {none, execution_permitted, reconcile_required}，R16），覆盖持有者仍活着时的周期探测与换实例时的 probe 替代，禁止转 execute、禁止 consume 与发布写调用；未核销 probe 等非法组合被拒、不以"最终执行完成"为期望，R14） | intent 前/后、broker 受理后 ACK 前、ACK 后落账前、completed 之后 broker 崩溃；**intent 已写时 broker 换实例（受理前 / 受理后 ACK 前 / ACK 后落账前三点，未核销与已核销两种前提）**；替代事务前后 kill；E1 的 ACK 晚到；E2 尚未发送又换 E3；编排与 broker 分别注入及同时注入 | 恢复按规则 (a)/(b) 唯一执行：同 epoch 同 request_id 重送，换 epoch 走替代协议（旧 intent → superseded、新 intent 唯一）；已核销且非 indeterminate 的 execute 恢复须先静默；probe 发送不要求静默，其负向映射才要求静默；耗尽分支按 CF-AUTH-20d / 20j，不断言自动恢复；同 id 异 digest 拒；无永久 intent 阻塞、无双活跃 intent、无虚假 completed；晚到 ACK 只写审计；broker 侧无双执行；task 最终完成或合法进入 publishing 对账（R10-03，R11，R12 Codex C-01 / CC C12-01） |
+| CF-IPC-08 | task_complete 含非整数 float metrics | 解析 / 同载荷重放 / 仅 metrics 异的重放 | WireJson 接受；投影去 metrics 后 digest 相等 → 首响应复用（metrics 差异不构成 mismatch，R9-04） |
+| CF-BLOB-01 | 无 lease 临时文件 | GC | 回收；有 lease 不回收（lease 先行断言 + data_class 出生标注断言） |
+| CF-BLOB-02 | blob 提交链 | rename 前/后、索引前逐点 kill | 恢复语义逐点断言（CF-LED 点位） |
+| CF-BLOB-03 | 上传中 | GC 并发 | 互不干扰 |
+| CF-BLOB-04 | 索引在 blob 失 | 消费 | sys.error |
+| CF-BLOB-05 | blob 内容被篡改（digest 不符） | 读取消费 | 读侧校验失败 → sys.error + 审计（Q-03） |
+| CF-SKILL-01 | 同 request_id | 同/异载荷重放 | 同载荷复用结果；异载荷 E-SKILL-IDEM-MISMATCH |
+| CF-SKILL-02 | 已提交 series | 再 submit | 409 |
+| CF-SKILL-03 | 不可应用 series | submit | 422 + 首个失败 hunk 定位；二进制 patch 段拒 |
+| CF-SKILL-04 | Run 未关闭 | GET result | 425 |
+| CF-SKILL-05 | TargetSpec 三型 + 未知项/空集 | create | 解析正确/逐项拒绝 |
+| CF-SKILL-06 | create 异步 | snapshot 失败 | GET 呈现 closed(snapshot_error)；GET 响应单一模型断言 |
+| CF-DC-01 | 多密级成员 | 聚合 | 取最大 |
+| CF-DC-02 | 缺失标签 | 消费 | 按 secret（fail-closed） |
+| CF-DC-03 | cascade 多跳 | 每跳校验 | 越权跳拒绝 |
+| CF-DC-04 | build_log 摘录含源码行 | 标注 | 升 internal_code |
+| CF-DC-05 | worker 自报 ref 密级 ≠ 索引 | 校验 | 拒绝 sys.invalid_result |
+| CF-COR-01 | 复查窗口检出迟到发布 | 自动流程 | 告警 + CorrectionRecord 生成（服务端字段）+ 终态不变 |
+| CF-COR-02 | 同修正重复/并发提交 | post_close_correction | 幂等键去重、单条落账 |
+| CF-COR-03 | 有修正的 Run | GET result | ResultEnvelope.corrections 呈现、RunSummary 不含 |
+| CF-REC-01 | 崩溃恢复 | 重执行 | 复用既有 task/dispatch 记录（dispatch_id 不变）、不产生新分派事件 |
+| CF-REC-02 | 恢复后同参效应 | claim | 命中崩溃前记录（键跨重启稳定断言） |
+| CF-UP-01 | optional 上游缺失 | dispatch | UpstreamItem.ref=None 显式呈现；hard-required 缺失按 V-15 静态不可达（运行时防御拒绝） |
+| CF-FIX-00 | fixture 注册集定案（CF-DSL-FLAG 依赖，**逐名对齐两份规范 YAML 原文**）：compiler{build_passed, **build_failed_exhausted**} / ut{ut_passed, ut_fix_patch_ready} / benchmark{bench_done, bench_failed} / review{**review_report_ready**, pass, concerns, block}（pass 供 A4 terminal success_on）/ ci{**release_plan_ready**}；task_prefix CMP/UT/BEN/REV/CI | 注册 | harness 从两份原文**字节**抽取 **agent 型来源节点的 route.on 与 agent terminal 的 success_on** 逐项断言 ∈ 对应注册集；gate 型来源的 on 另对照 §1.2 固定 outcome 集（approved/rejected/pass/fail 不属任何 agent 集——R7-05 量词修正）；注册集与旗舰不符即红灯自证 |
+| CF-FIX-01 | compiler fixture：consume 无 / produce BuildReport(含 output_refs、fix_patches 各 1) | 装配+往返 | 注册过、schema 往返过、attestation 三重绑定过 |
+| CF-FIX-02 | ut fixture：consume BuildReport / produce UTReport(双 board、fix_patch 1) | 同上 | 同上 + candidate 引用分支 B 走通 |
+| CF-FIX-03 | benchmark fixture：consume BuildReport / produce BenchReport(regression_pct 定点) | 同上 | 同上 + gateable 字段解析 |
+| CF-FIX-04 | review fixture：consume 三 Report(一缺失) / produce ReviewReport | 同上 | 同上 + inputs 缺失显式化（CF-UP 交叉） |
+| CF-FIX-05 | ci fixture：consume ReviewReport / produce ReleasePlan(ReportBase 头) | 同上 | 同上 + V-13b produces 判定 + ci_plan_task_id 绑定 |
+
+**参考策略验收（R19，非规范，不计入 conformance 结论）**：针对 §2.2d 参考归因策略 v1 的目标（S3），作为实现期的回归与度量基线；替换策略时重写本表，CF-AUTH-20g–20r 不变。
+
+| ID | 前置 | 动作 | 期望（目标） |
+|----|------|------|------|
+| CF-STR-01 | 毒丸识别 | 执行中毒丸 P 与无辜 B 同实例；核销前毒丸（含 ACK 前崩溃）；B1 / B2 已核销且来自无关崩溃，E2 上在飞毒丸 N，E1 reclaimed 后 B1 变为 ready；已核销毒丸 P × 持续并发流量 | 多绑定故障不计数、进入通道；N 令 E2 崩溃时快照为 {N} → N +1；P 在至多 1 + max_task_interrupts 次故障后被识别；B / B1 / B2 的计数为 0 且最终完成（原 CF-AUTH-20g 期望） |
+| CF-STR-02 | 实例级停滞 | P 占满 broker 执行线程、心跳正常，无辜 A 的 awaiting_consume 期限短于 P 的 awaiting_outcome，持续流量 | 快照 ≥ 2 → 都不计、进入通道（A 排首），A 与流量任务的 loss 为 0、不进入 manual_only，P 在至多 1 + max_task_losses 次期限事件后被识别（原 CF-AUTH-20h 后半） |
+| CF-STR-03 | 通道排空 | 先后两次崩溃形成两批成员；无 ready 成员时普通 execute 在飞、随后成员转 ready；排空期间实例退役；隔离中编排重启；draining 时在飞只探测在 probe_drain_timeout 内返回 / 永不返回 | 合并为一个通道；先排空再独占，持续新流量不能延长排空；只探测按时返回则不换实例，永不返回则 isolation_drain 恰一次、计数零增量；排空中实例退役则重新排空；同一时刻至多一个隔离头在执行且当前实例不承担其他派发（原 CF-AUTH-20k 排空部分） |
+| CF-STR-04 | 未核销隔离头 | 隔离中未核销 P 在 intent 后发送前、ACK 前、consume 前分别崩溃 | P 的 isolation_state 保持 ready；consume 先胜 → waiting_holder（原 CF-AUTH-20m 策略部分） |
+
+## 7. 附录
+- **A0 类型索引**（R11 全量重建；C-05/C11-08/Kimi C-01）：本文全部具名类型（class、类型别名、Annotated 联合与正文以 `- **名**：` 定义的 Report 类型体）及定义位置，逐名列出、无"族"概括——contracts 包按此逐一交付，CI **双向**断言：A0 每个名字解析到正文唯一定义 ∧ 正文每个具名模型在 A0 有条目（差集为空）；抽取范围包括代码块中的 class 与别名、行内代码中的具名别名（如 §3.6 SnapshotManifest）与 `- **名**：` 形式的类型体（R12）。
+  - §0.1：CanonicalizationError（异常类型）。
+  - §1.1：GateType、RetryOutcome、RetrySpec、LoopBudget、RunBudget、LLMBudget、NodeSpec、LoopEdge、LoopSpec、JoinSpec、RouteSpec、PipelineSpec。
+  - §1.2：SysOutcome、JsonValue、WireJson。
+  - §1.3：PipelineValidationError（异常类型）。
+  - §2.3：ProducerSelector、AgentRegistration、UpstreamItem、TaskInput、JoinInputItem、HandoffResult、ArtifactRef、RunContext。
+  - §2.4：ReportBase、BuildReport、UTReport、SuiteResult、MetricEntry、RoundDigest、ReportEntry、BenchReport、ReviewReport、Finding、PendingBase、PendingCancel、PendingFailSafe、PendingSeriesUpdate、PendingAdminFinalize、PendingEvent、FeedbackReport、RunSummary、PatchAttribution、AgentProducer、ExternalProducer、Producer。
+  - §2.5：ReleaseAction、ReleaseTarget、ReleasePlan、ReleaseManifest、ApprovalDecisionRequest、ApprovalDecision、AuthorizationRecord、DispatchReceipt、BrokerInstanceLease、ReleaseTaskState、RetirementEvent、CrossTaskBreaker、IsolationChannel。
+  - §2.6：ExecutionManifest。
+  - §2.7：ReposSpec、ManifestSpec、PackagesSpec、TargetSpec、PatchItem、CreateRunRequest、CreateRunResponse、SubmitPatchRequest、SubmitPatchResponse、SnapshotInfo、RunStatusResponse、CancelRequest、CancelResponse、TraceEvent、SkillError、ResultEnvelope。
+  - §3.1：ActivationRecord。§3.3：CandidateRecord。§3.6：SnapshotManifest。
+  - §4.1：EffectResult。§4.2：EffectRecord、EffectError。§4.3：ProbeOutcome、ProbeResult、ProbeReceipt、EffectType。
+  - §5.1：CommandName、CommandEnvelope、CommandAck、CommandError、ResponseOk、ResponseError、FramingError、CommandResponse、HeartbeatRequest、EffectClaimRequest、ClaimExecute、ClaimReuse、ClaimError、EffectClaimResponse、EffectTransitionRequest、TraceAppendRequest、BlobBeginRequest、BlobBeginResponse、BlobCommitRequest、BlobAbortRequest、SeriesCandidateSubmitRequest、SeriesCandidateSubmitResponse、TaskCompleteRequest、DecisionSubmitCommand、DecisionSubmitResult、AuthorizationConsumeRequest、ConsumeGranted、ConsumeRejected、ConsumeResumed、AuthorizationConsumeResponse、BrokerHelloRequest、BrokerHelloResult、ReleaseOutcomeRequest、ReleaseReconcileReport、ReconcileProceed、ReconcileRecorded、ReleaseReconcileResponse、ReleaseProbeReport、ReleaseProbeResponse、ReleaseDispatch、ReleaseProbeDispatch、ReleaseDispatchPayload、PendingRegisterRequest、AdjudicateRequest、AdjudicateResult、ProbeDispatch、RecordView、ProbeReport、PostCloseCorrectionRequest。
+  - §5.2：FencingInfo、GitPushOp、GerritReviewOp、RestrictedOp。§5.3：DataClass、ProviderPolicy、ProviderExecutionConfig。§5.4：CorrectionRequest、CorrectionRecord。§5.5：ToolFact、LogExcerpt、SourceExcerpt、EvidencePacket。
+  - 内部 schema（不入 contracts 包公开面，见 A1）：CompiledPipeline。
+- **A1 开放项（纯实现，均已收窄）**：task 序号分配器持久化布局；CompiledPipeline 内部 schema。TraceEvent 模型见 §2.7（此处不重复定义）；消费方对未知 type 前向兼容忽略，envelope 纳入版本规则。
+- **A2 追溯矩阵**：§0↔HLD D6/D12；§1↔HLD §4.2（V-13b↔勘误 E-01/HLD-Q1）；§2↔HLD §4.3/§4.4/§6/§8.2-8.3（§2.2↔§8.3 三支）；§3↔HLD §4.2.4/§4.5/§7.6.2（§3.5↔应用后 tree 组合）；§4↔HLD §5.2；§5↔HLD §7.1/§7.5/§8.5；§6↔HLD §11.3/附录 B-6。
+- **A3 变更记录**：v0.1 初稿；v0.2 = 57 条修订；v0.3 = 47 条修订；v0.4 = 34 条修订；v0.5 = 第四轮 21 条修订；v0.6 = 第五轮 18 条修订；v0.7 = 第六轮 9 条修订；v0.8 = 第七轮 9 条修订；v0.9 = 第八轮 12 条修订；v0.10 = 第九轮 8 条修订；v0.11 = 第十轮 10 条修订（release_outcome 回归两值 + release_reconcile_report 对账命令 + 原子许可三件套；DispatchReceipt 模型与出向事务协议；broker_hello 握手 epoch 连接绑定；FramingError 第三臂；receipt 先于 guard 的处理序；D12 用例 running/publishing 分型；CommandName 扩至 19）；v0.12 = 第十一轮 17 条意见（11 个独立问题）全部采纳（gate 决定 CAS 唯一化——outbox 消费不再改 gate；broker epoch 按进程实例分配并持久化、同实例重连保持 epoch、单一当前实例、epoch 上界 < 2^53；broker 入向幂等域改为 (broker_epoch, command)；静默定义为合取并作为唯一定义；AuthorizationRecord.recovery_state 与 C-10/C-10a 执行权 guard；每 epoch 至多一次执行许可；publishing 下 D12 不以错误返回、不阻断对账，not_happened 且许可不通过时同事务 release_failed 映射，ReconcileDeny 删除、release_outcome 恒为执行后；多目标部分出现只能报 indeterminate；DispatchReceipt 统一为唯一出向模型并持久化完整载荷、completed 仅表送达、同 token 至多一个 intent；§2.2d 持有者更替重派；全命令统一处理序与 FramingError/校验失败不落 receipt；A0 全量重建 + 双向 CI；ConsumeRejected.stale_epoch 更名 holder_not_quiesced；CF 用例相应扩充）；contract_version 1.0.0.dev1；v0.13 = 第十二轮 10 条意见全部采纳（DispatchReceipt 增 superseded 态与 superseded_by/superseded_at，换 epoch 重派走替代协议、恢复规则 (a)/(b) 按 target_epoch 互斥；broker_hello 处理序例外——未握手连接仅 hello 可受理、响应丢失后新 socket 同 request_id 重放仍完成连接绑定；broker 实例身份改由 SO_PEERCRED + /proc starttime 核实、hello 载荷只回显；新增 BrokerInstanceLease 与 broker 心跳，租约 lapsed 触发静默判定，静默判定写明 pgid 存活与 pid 复用两种情形；task 级失联令实例 retiring、拒绝其执行类命令并由 supervisor 换实例；recovery_state=indeterminate 锁存，consume 拒绝（recovery_indeterminate）、不发 execute 重派，只经新增 C-11a release_probe_report 的 probe_only 通道或人工裁决出口；ReleaseDispatch 增 mode；CommandName 扩至 20；null request_id 的 FramingError 按 socket 角色分别处理；C-10/C-10a 行序调整；A0 补 BrokerInstanceLease / SnapshotManifest / ReleaseProbeReport / ReleaseProbeResponse；CF-AUTH-09c/09d/17b–17d/18–21、CF-IPC-09/10 扩充，CF-AUTH 行按编号排序）；contract_version 1.0.0.dev2（新增命令与模型字段为破坏性修改）；v0.14 = 第十三轮 7 条意见（6 个独立问题）全部采纳（release task 持久化阶段与阶段期限——awaiting_consume / awaiting_outcome / awaiting_reconcile 到期即 task 级失联、覆盖许可之后的失联，awaiting_probe 不触发退役；indeterminate 增编排周期任务驱动只探测，持有者未静默时 not_happened 响应 retire_requested 并回收持有者后重新探测；只探测拆为独立出向命令 release_probe_dispatch / ReleaseProbeDispatch（不含 release_plan_ref 与发布内容）、ReleaseDispatch 改为仅执行型、DispatchReceipt.payload 为判别联合，broker 侧只读 adapter 与 FakePublisher 写计数为 0 的 conformance 约束；broker 回收改由 deploy 特权 launcher 经 cgroup v2 cgroup.kill 执行，静默改按实例 cgroup 为空判定，lapsed 与 retiring 走同一回收流程，retiring 实例仅受理 heartbeat；reconciliation worker 协议错误改按 synthetic_worker_loss 处理；CF-AUTH-09d 补前置并增 09e；§2.2(c) 与出向描述残留措辞修正；CommandName 扩至 21；CF-AUTH-09c–09e / 17c / 17e / 17f / 20 / 20b / 20c、CF-IPC-09 / 10 扩充）；contract_version 1.0.0.dev3（新增出向命令与模型拆分为破坏性修改）；v0.15 = 第十四轮 6 条意见（5 个独立问题）全部采纳（静默改按实例专属 cgroup 子树 `cgroup.events` populated=0 判定、不以根 cgroup.procs 为空替代，BrokerInstanceLease 增 launcher 写入的 cgroup_path / cgroup_generation，回收过程崩溃与同名重建不沿用旧证明；新实例拉起不等旧实例 reclaimed，未核销者立即重派、已核销者与负向映射仍等静默；release task 失联次数上界 `loss_count` / `max_task_losses`（缺省 2），达上界后未核销者以 release_failed(dispatch_loss_exhausted) 关闭、已核销者只经人工裁决；阶段期限与完成事件以 phase CAS 互斥；新增 ReleaseTaskState 模型并入 A0；ConsumeRejected 增 dispatch_loss_exhausted；§5.1 出向续跑按 execute / probe 分述；CF-AUTH-09c / 09f / 20d / 20e / 20f、CF-IPC-10 扩充）；contract_version 1.0.0.dev4（新增模型字段与枚举值为破坏性修改）；v0.16 = 第十五轮 5 条意见全部采纳（阶段定时器绑定代次与 owner_epoch、到期 CAS 消费一次并解除同实例全部 task 的定时器、等待旧 holder 期间不运行执行期限、launcher 退役请求幂等；新增 interrupt_count / max_task_interrupts 覆盖 lapsed 路径的毒丸任务，launcher 拉起指数退避；耗尽后已核销者置 manual_only，C-11 与特权运维 guard 增 manual_only 分支并受强制 probe 结果约束；broker cgroup 委派写权限限于本实例子树；ReleaseTaskState 增 owner_epoch / phase_generation / timer_armed / recovery_mode / interrupt_count；CF-AUTH-20 / 20g–20j、CF-IPC-03 / 10 预期统一）；contract_version 1.0.0.dev5；v0.17 = 第十六轮 6 条编号意见（Claude Code C16-03 含两点；5 个独立问题）全部采纳（中断计数改为嫌疑集规则：回收时已承担未完成 execute 派发的 task 中，单个者计数、多个者不计数并进入按确定序串行的隔离重派，覆盖核销前（awaiting_consume）毒丸，耗尽后按授权实际是否核销分流；launcher 改为持久化 spawn 记录的连续启动失败上界，派发送达后的 lapsed 不计入启动失败；manual_only 下只探测对任一 recovery_state 合法、结果只作裁决证据；recovery_mode 增 isolating 并写明迁移，C-09、④、C-11a 守卫显式含 manual_only；ReleaseTaskState 增 suspect_set_id / isolation_seq；CF-AUTH-20g / 20h / 20i / 20j 修订、20k / 20l 新增、CF-IPC-10 扩充）；contract_version 1.0.0.dev6；v0.18 = 第十七轮 8 条编号意见（4 个独立问题）全部采纳（执行绑定以 intent 提交为准、就绪前不得绑定、退役判定与绑定串行化；退役事件持久化 RetirementEvent 并恰归一个域——有确定触发者只计其 loss、同实例其他 task 不计 interrupt，无触发者的 lapsed 有绑定归任务域、无绑定归启动 / 健康域；嫌疑集改为唯一的全局隔离通道，隔离头执行期间当前实例不承担任何其他派发（暂缓 intent 不放行、不计时、不构成绑定），hello 扫描排除 isolating / manual_only；隔离头崩溃在判定事务内即计数并让出通道，成员调度状态 ready / waiting_holder / probe_only / diagnostic_done 防阻塞与饥饿；等待中授权过期 reason = authorization_expired_in_isolation；launcher 改为启动 / 健康失败以执行绑定划界；waiting_holder 进入时点写明；DispatchReceipt 增 held_for_isolation、sent_at 可空，ReleaseTaskState 增 isolation_state；CF-AUTH-20g / 20h / 20i / 20k / 20l 修订；v0.17 意见计数更正为 6 条编号意见）；contract_version 1.0.0.dev7；v0.19 = 第十八轮 12 条编号意见（8 个独立问题）全部采纳（计数只在退役绑定快照恰为一个 task 时发生——有确定触发者的阶段期限到期在多绑定时也不单独计触发者，全部进入通道；执行绑定增结束条件，历史 receipt 不再构成绑定；隔离通道增 open / draining / exclusive 状态，先排空后独占，无响应只探测以计划性回收更换实例；未核销隔离头崩溃后保持 ready、已核销转 waiting_holder；暂缓 intent 的放行事务、期限起算、重启唤醒与作废写明，§2.5 恢复规则 (a) 排除暂缓项；新增计划性回收域 controlled_reclaim（retire_requested、isolation_drain、已登记的 planned_restart），hello 前启动失败的 broker_epoch 为空；跨任务熔断；授权过期关闭只针对实际未核销者、原因不经 consume 返回；recovery_mode 迁移与排序键修正；新增 IsolationChannel 模型；CF-AUTH-20g / 20h / 20i / 20k 修订、20m–20p 新增）；contract_version 1.0.0.dev8。v0.20 = 第十九轮 8 条编号意见（7 个独立问题）全部处置，并按三方一致意见**把故障归因从契约降为实现策略**（§2.2d 分为契约条款 K1–K6 与非规范的参考归因策略 v1；"毒丸有限次被识别""无辜 task 不被他人计数"由保证改为目标与度量项）；契约新增与归因无关的影响次数上界 affected_count / max_task_affected 与只探测上的耗尽出口 auto_probe_suspended；退役事件增只探测在飞快照 probe_task_ids、charged_task_ids 与 strategy_version，bound_task_ids 由 IsolationChannel 移回 RetirementEvent；跨任务熔断改为持久化的不同 task 窗口（只由正常结案或人工恢复清零，phase_deadline 不入窗口、只告警），新增 CrossTaskBreaker 模型；暂缓放行按 execute / probe 分型，probe 不要求静默、不写执行阶段；独占预约在持有者终结、转 indeterminate、置 manual_only、实例退役或失去准入时按 selection_seq CAS 释放并写唤醒；重启扫描全部暂缓项；排空不再依赖只探测取消命令；空快照的 phase_deadline 判为不变量破坏；CF-AUTH-20g / 20h / 20i / 20k / 20m / 20o 改写、20q / 20r 新增，原毒丸识别期望移至非规范的参考策略验收 CF-STR-01–04；contract_version 1.0.0.dev9。
+
+## 8. 附录 A4：compiler_bench_only.yaml（规范原文——CF-DSL-FLAG 断言以此字节加载）
+
+```yaml
+pipeline: compiler_bench_only
+dsl_version: 1
+nodes:
+  compiler: {agent_type: compiler}
+  benchmark: {agent_type: benchmark}
+  bench_gate: {gate: threshold, metric: benchmark.regression_pct, op: "<=", value: 5.0}
+  summary: {agent_type: review, mode: bench_summary, terminal: true, success_on: [pass]}
+entry: compiler
+routes:
+  - {from: compiler, on: build_passed, to: benchmark}
+  - {from: benchmark, on: bench_done, to: bench_gate}
+  - {from: bench_gate, on: pass, to: summary}
+default_route: fail_safe
+run_budget: {max_wall_clock_min: 240}
+```
+（status 名依 CF-FIX fixture 注册集；`value: 5.0` 词素路径与 `on:` 字符串键在本文件上同时得证；无环故无 loops 节，V-07 空覆盖合法。）
