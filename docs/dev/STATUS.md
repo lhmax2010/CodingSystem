@@ -8,16 +8,20 @@
 
 | 编号 | 标题 | 状态 | 提交号 | 交付目录 |
 |---|---|---|---|---|
-| task-001 | 08 初稿、仓库骨架、门禁与开发记录 | 实现完成；本地门禁通过，待外部评审 | 4f6ce82ef55cf11c17aa5466735a2f89bcea782a；交付为本文件所在提交 | docs/dev/deliver/task-001/ |
+| task-001 | 08 初稿、仓库骨架、门禁与开发记录 | 实现完成；本地门禁通过，待外部评审 | 4f6ce82ef55cf11c17aa5466735a2f89bcea782a；交付提交 38ed660cd7a4df8c3021d1d0ccde0ab580f91287 | docs/dev/deliver/task-001/ |
+
+| task-002 | task-001 审读修正与批次审定 | 本地门禁通过，待审读 | 1b6775e8c7a85e7215250d1ef7942c88c3fa802d；交付为本文件所在提交 | docs/dev/deliver/task-002/ |
 
 ## 3. 已闭合结论
 
 | 结论 | 证据路径 | 提交号 |
 |---|---|---|
-| 08 指南按给定摘要移动，原文未修改；Downloads 源文件已不存在 | deliver/task-001/evidence.txt | 4f6ce82ef55cf11c17aa5466735a2f89bcea782a |
+| 08 指南按给定摘要移动后，仅按负责人授权修改资源开跑门槛；Downloads 源文件已不存在 | deliver/task-001/evidence.txt | 4f6ce82ef55cf11c17aa5466735a2f89bcea782a |
 | 两个独立分发空壳可安装；依赖与实际导入边界有测试 | agents/skeletons/tests/test_installation.py；tests/ci/test_imports.py；最终结果见 deliver/task-001/gate_report.txt | 4f6ce82ef55cf11c17aa5466735a2f89bcea782a |
 | 当前框架没有业务代码；无 LangGraph；无 provisional 契约 | framework/；provisional.md | 4f6ce82ef55cf11c17aa5466735a2f89bcea782a |
 | 选定工具版本闭包不含 Pygments/rich，26 个已安装分发 D23 门禁零命中 | deliver/task-001/REPORT.md | 4f6ce82ef55cf11c17aa5466735a2f89bcea782a |
+
+task-002 已闭合：系统 3.12.3 虚拟环境、带任务号门禁、历史报告保护、四文件停用首行及批次消费三项自查。证据见 deliver/task-002/REPORT.md 与 gate_report.txt；实现提交 1b6775e8c7a85e7215250d1ef7942c88c3fa802d。
 
 ## 4. 负责人裁决前提
 
@@ -29,30 +33,37 @@
 - 2026-11-11，HLD D23、task-001：不得引入 PHP；未批准任何例外。
 - 2026-11-11，08 §1、task-001：设计文档 00–09 只由设计方修改；本任务先原样移动 08，后按负责人专项授权仅修改 §4.2 第 2 条。
 
+
+- 2026-11-11，task-002 常规规则：新放入的设计文档、评审文件或处置表含 D23 文本信号时，放入文件的任务必须同时在 ci/d23_policy.json 纯数据分类登记路径、sha256、理由，并在该任务 REPORT.md 列出，由设计审读确认。未登记导致门禁失败，任务视为未完成。
+- 2026-11-11，task-002 常规规则：依赖闭包出现 PHP 相关文本信号时可选择不含它的版本，但不得长期以降级规避；确需该依赖时必须停止报告，走 HLD D23 例外与分类流程，由负责人裁决。
+
 ## 5. 挂账
 
 | 问题 | 临时处理 | 解除条件 | 负责方 |
 |---|---|---|---|
+| pytest 8.3.5 / import-linter 2.0 固定版本 | 新版默认闭包引入 Pygments PHP 词法器，按 D23 拒绝后暂固定无该依赖的版本；不得长期以降级规避 | 升级前重新核对闭包；确需含信号依赖则停止并提交 D23 分类/例外裁决，不自行扩大豁免 | 开发跟踪、负责人裁决 |
 | contracts/CF 尚未实现 | 按 task-001 授权将门禁 8、9 标为跳过，非通过 | 后续任务实现契约与 CF 后启用 | 设计下达任务、开发实现 |
 | 关键模块无业务分支 | 保持 95% 阈值；报告 N/A，不作为业务验证证据 | 后续实现后逐模块验收 | 开发 |
 | 部署类 D23 尚未实现 | gate_matrix 明列待实现，仓库扫描不替代部署验收 | 首次部署/使用前完成真实验收 | 开发 / 负责人 / 内网 AI |
-| 映射批次草稿尚未审定 | 保留原文与候选子键，不实现其契约 | 设计审定互斥、穷尽、最早消费者 | 设计与评审主持 |
+| task-001 映射审定 | task-002 已执行 2026-11-11 批次裁决，父键不重复归批，逐类消费引用已重写 | 本轮批次问题已闭合；具体契约仍须对应批次三方通过 | 设计审读、开发维护 |
 | 旧资源门槛导致等待超时 | 负责人授权修改为 L1 available ≥4096 MiB，已按新门槛运行 | 已解除；限额不变；后续仍执行资源预检 | 负责人裁决已登记 |
 
 ## 6. 环境事实
 
-- 核实日期：2026-11-11；开场 main HEAD f5fcc6329c04da3d7bd324a06da724267df1c564，干净且已同步。
-- `python3 --version`：Python 3.12.3；uv 使用既有托管 CPython 3.13.13 创建 `.venv`，未安装系统 Python，后续安装禁止解释器下载；两者均满足 ≥3.12。
+- 核实日期：2026-11-11；task-002 开场 main HEAD 38ed660cd7a4df8c3021d1d0ccde0ab580f91287，干净且已同步。
+- 系统 `/usr/bin/python3.12` 与 `.venv/bin/python` 均为 Python 3.12.3；task-002 已重建虚拟环境，`.python-version` 固定 3.12；gate 在安装前后核对实际主次版本，不符失败。未安装系统 Python，不下载托管解释器。
 - `uv --version`：0.11.13，可用；锁定工具 uv。`uv.lock` 同时记录两个工作区包和完整传递闭包与制品 hash。
 - 打包：setuptools 显式 `package-dir={codingsystem="framework"}`；skeletons 用 src 布局、独立项目依赖框架 workspace 包；构建后端作为已锁定开发依赖，`--no-build-isolation` 避免额外浮动下载。
 - `systemd-run --user --scope -p CPUQuota=200% -p MemoryMax=3G -p MemorySwapMax=0 nice -n 19 ionice -c3 true` 成功；gate.sh 还校验实际 cgroup 文件。
 - `nproc`：20；`free -m` 总内存 31540 MiB；可用内存与负载每次 L1 前记录于证据/门禁报告。无并行门禁或 xdist。
-- 完整命令与原始输出见 deliver/task-001/evidence.txt。
+- task-002 核对命令与输出见 deliver/task-002/evidence.txt；历史 task-001 证据保持原样。门禁必须用 ci/gate.sh task-NNN，已提交的报告不覆盖。
 
 ## 7. 设计问题清单
 
 | 位置 | 问题 | 处置状态 |
 |---|---|---|
-| HLD 附录 B7、09 §3.1 | Demo 最小字段 / 第二批 mock / 第三批真实能力的字段子键需确认 | task-001 授权只出草稿，待设计审定 |
-| HLD §11.3、09 §3.1 | P4 全部类别消费的 mock schema 与真实业务字段分界 | 映射表候选关联已列，待设计审定 |
+| HLD 附录 B7、09 §3.1 | Demo 最小字段 / 第二批 mock / 第三批真实能力的字段子键需确认 | task-002 已按设计审定修改，批次归属闭合；字段细化随对应 01 批次评审 |
+| HLD §11.3、09 §3.1 | P4 全部类别消费的 mock schema 与真实业务字段分界 | task-002 已逐字段重写；P1–P4 无第三批依赖，晚期真实类别单列 |
 | 09 §3/§5.2/§10 | 每个 gate 条目的个人负责人与细化日期未指定 | 保留角色与原文目标，待负责人确认 |
+
+开发状态唯一来源为本文件；.dev_memory 四文件已加停用首行，原历史内容保留。

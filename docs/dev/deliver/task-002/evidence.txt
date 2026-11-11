@@ -1,0 +1,104 @@
+task-002 opening evidence (all commands nice -n 19 ionice -c3; serial)
+
+$ git branch --show-current
+main
+exit=0
+
+$ git rev-parse HEAD
+38ed660cd7a4df8c3021d1d0ccde0ab580f91287
+exit=0
+
+$ git status --porcelain
+?? docs/dev/deliver/task-002/
+exit=0
+
+$ sha256sum uv.lock docs/dev/deliver/task-001/gate_report.txt
+3739076d1208bd5f6c291ff67856f75acd8590affe0ca6c98586512822496ad3  uv.lock
+af4d0553bca619603b0c6cd586c227717099be3306d2dde26328b0ad47a0f96b  docs/dev/deliver/task-001/gate_report.txt
+exit=0
+
+$ /usr/bin/python3.12 --version
+Python 3.12.3
+exit=0
+
+$ .venv/bin/python --version
+Python 3.13.13
+exit=0
+
+Mapping static audit:
+{
+  "parent_count": 17,
+  "leaf_count": 94,
+  "test_rows": 112,
+  "p1_p4_rows": 97,
+  "later_rows": 15,
+  "batch_violations": [],
+  "demo_violations": [],
+  "original_categories": 86
+}
+
+$ uv venv --clear --python /usr/bin/python3.12 --no-python-downloads .venv (L1)
+Using CPython 3.12.3 interpreter at: /usr/bin/python3.12
+Creating virtual environment at: .venv
+
+$ .venv/bin/python --version
+Python 3.12.3
+exit=0
+
+$ sha256sum uv.lock docs/dev/deliver/task-001/gate_report.txt
+3739076d1208bd5f6c291ff67856f75acd8590affe0ca6c98586512822496ad3  uv.lock
+af4d0553bca619603b0c6cd586c227717099be3306d2dde26328b0ad47a0f96b  docs/dev/deliver/task-001/gate_report.txt
+exit=0
+
+$ git diff -- uv.lock
+exit=0
+
+Rendered Markdown audit: 17 parents, 94 unique leaves, 112 test rows, no P1-P4 third-batch reference.
+.dev_memory/handoff_summary.md: prefix-only byte comparison PASS; before=161f0e4cbb2acebad897229236210442b20d42724d36ba310e13c0a5ad5a96ad after=35987462cb0c0e25d7af8b686e3e2526892d3e306932da8f36de2c5f6aa7383d
+.dev_memory/decision_log.md: prefix-only byte comparison PASS; before=6a3858f612c447077e00dcb2c490556d461a8fdaf033b5c099152e2c68eac7d5 after=0d5f30f1fc341be031666f6a1831834cb735c63127b491751c7c6cad2c046190
+.dev_memory/blocker_log.md: prefix-only byte comparison PASS; before=fc080bd1922d86c3a3489c5fdea265b6003093f0ae869fba3d80a69f81284512 after=ecb1721f9676ed95af28cc37334e812e03b733eb0d25e7c8d03492bcdc329737
+.dev_memory/current_state.md: prefix-only byte comparison PASS; before=0e8685ec1c115b39a6b98ea888ce41ee6f90bc3562a8e5ae89d35cca41a82f92 after=37cec63966e4dc3592a03b74fc925bc58dac85a60673d8bb70d808adfbfa3704
+
+$ .venv/bin/python -c import sys; print(sys.version); print(sys.executable); print(sys.base_prefix)
+3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]
+/home/linhao/Toolchain/development/CodingSystem/.venv/bin/python
+/usr
+exit=0
+
+$ sha256sum docs/dev/01_extension_mapping.md docs/dev/deliver/task-001/gate_report.txt
+0d347550a32862c19e6430500a44a7f8372b31656388707312b9fc1e4c224e27  docs/dev/01_extension_mapping.md
+af4d0553bca619603b0c6cd586c227717099be3306d2dde26328b0ad47a0f96b  docs/dev/deliver/task-001/gate_report.txt
+exit=0
+
+$ git diff --stat
+ .dev_memory/blocker_log.md       |   1 +
+ .dev_memory/current_state.md     |   1 +
+ .dev_memory/decision_log.md      |   1 +
+ .dev_memory/handoff_summary.md   |   1 +
+ ci/d23_policy.json               |   4 +-
+ ci/d23_scanner_digests.json      |   2 +-
+ ci/gate.sh                       |  30 ++-
+ docs/dev/01_extension_mapping.md | 480 +++++++++++++++++++++------------------
+ docs/dev/STATUS.md               |  25 +-
+ 9 files changed, 310 insertions(+), 235 deletions(-)
+exit=0
+
+Final mapping SHA256 after column header normalization: f9c5f8c8e440f77501879f4234daf9379f3fec0ed9af67cee686cc908a0965f0
+
+$ git log -3 --format=%H %an <%ae> / %cn <%ce> %s
+1b6775e8c7a85e7215250d1ef7942c88c3fa802d Hao Lin <hao.lin@samsung.com> / Hao Lin <hao.lin@samsung.com> docs: apply reviewed extension batches and precise gate consumption mapping
+df297a091ccbd31cbf2d9c8f9cf63e018e953ece Hao Lin <hao.lin@samsung.com> / Hao Lin <hao.lin@samsung.com> docs: retire legacy development memory files
+d1f117973cca3b38c3b83cf42a69029862b33003 Hao Lin <hao.lin@samsung.com> / Hao Lin <hao.lin@samsung.com> ci: require task-specific evidence and system Python 3.12
+exit=0
+
+$ sha256sum uv.lock docs/dev/deliver/task-001/gate_report.txt docs/dev/01_extension_mapping.md
+3739076d1208bd5f6c291ff67856f75acd8590affe0ca6c98586512822496ad3  uv.lock
+af4d0553bca619603b0c6cd586c227717099be3306d2dde26328b0ad47a0f96b  docs/dev/deliver/task-001/gate_report.txt
+f9c5f8c8e440f77501879f4234daf9379f3fec0ed9af67cee686cc908a0965f0  docs/dev/01_extension_mapping.md
+exit=0
+
+$ git diff 38ed660 -- docs/08_Codex_Dev_Guide_v1.md docs/dev/deliver/task-001
+exit=0
+
+$ nice -n 19 ionice -c3 bash ci/gate.sh task-002
+Full original L1 output: gate_report.txt (same delivery directory).
