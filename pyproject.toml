@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=78"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codingsystem-framework"
+version = "0.0.1"
+requires-python = ">=3.12"
+dependencies = ["pydantic>=2,<3", "PyYAML>=6,<7"]
+
+[dependency-groups]
+dev = ["pytest==8.3.5", "pytest-cov>=6", "hypothesis>=6", "mypy>=1", "ruff>=0.11", "import-linter==2.0", "setuptools>=78"]
+
+[tool.uv.workspace]
+members = ["agents/skeletons"]
+
+[tool.setuptools]
+packages = ["codingsystem", "codingsystem.engine", "codingsystem.orchestration", "codingsystem.sdk", "codingsystem.contracts", "codingsystem.llm", "codingsystem.knowledge", "codingsystem.context", "codingsystem.evidence", "codingsystem.ledger", "codingsystem.resources", "codingsystem.boards", "codingsystem.stores", "codingsystem.gateway", "codingsystem.approval", "codingsystem.release", "codingsystem.entry"]
+package-dir = {codingsystem = "framework"}
+
+[tool.ruff]
+include = ["*.py", "*.pyi", "*.ipynb", "**/pyproject.toml"]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["framework", "agents", "conformance", "ci", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "agents/skeletons/tests"]
+addopts = "--strict-markers --strict-config --import-mode=importlib"
+pythonpath = ["."]
+markers = [
+ "unit: isolated unit checks", "contract: contract checks", "property: bounded properties",
+ "faultinj: persistence fault injection", "model: state machine checks",
+ "e2e_fake: end to end with fake dependencies", "intranet: internal network only",
+ "cf(id): contract conformance identifier"
+]
+
+[tool.coverage.run]
+branch = true
+source = ["framework", "agents/skeletons/src", "ci"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+
+[tool.codingsystem.coverage]
+line_minimum = 80
+critical_branch_minimum = 95
+critical_paths = ["framework/orchestration", "framework/ledger", "framework/approval", "framework/release", "framework/sdk/side_effect.py", "framework/sdk/side_effect"]

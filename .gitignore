@@ -10,3 +10,8 @@ htmlcov/
 dist/
 *.egg-info/
 .env
+
+# Local gate evidence intermediates
+.coverage.*
+.import_linter_cache/
+.hypothesis/
