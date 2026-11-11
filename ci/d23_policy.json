@@ -1,0 +1,60 @@
+{
+  "version": "task-001-d23-v1",
+  "parsers": {
+    ".py": "python-ast-tokenize"
+  },
+  "signatures": [
+    "<?php",
+    "composer.lock",
+    "composer.json",
+    ".phar"
+  ],
+  "comment_normalization": {
+    "python": "tokenize.COMMENT; remove leading #; strip surrounding whitespace; exact match"
+  },
+  "pure_data": {
+    "docs/00_Framework_HLD_v2.10.md": "162e66c18714e65c02c8a6349262b3cb0a614773683884f451537c955fd11217",
+    "docs/00_Framework_HLD_v2.11.md": "bd345cdffe504f9376c7a9a96fe1e38e1f8a72712d47dda4c250d0ea857349ca",
+    "docs/00_Framework_HLD_v2.12.md": "b0cb95d0a41f672922c91858a1e637ebb0f24ab4c8dd91a2ce59c2f2e1df691a",
+    "docs/00_Framework_HLD_v2.13.md": "db4507dade13c2d095dc61853d06ecb4dcda6a43d69193d46f78e5f8fe88d03d",
+    "docs/00_Framework_HLD_v2.14.md": "8e2bac5ffc2ce59530d3c088058bf745dd4f83f1576baca747bfb2bbe408c772",
+    "docs/00_Framework_HLD_v2.9.md": "9c6d120b4dddc2c4154aac707bedfe8cb65cccc00d4fc67c8031948fdadb4faa",
+    "docs/review/HLD_v2.10_01_v0.20_review_claudecode.md": "7dccca023cb2fb5a656614d93d43d0c4e5dc0ccba2b884ac48b25265b662b3b3",
+    "docs/review/HLD_v2.10_01_v0.20_review_codex.md": "94d2c04dcd89ddfa5b136c8af6bdcfc94f096c735699198273a481f5feb447e4",
+    "docs/review/HLD_v2.10_01_v0.20_review_kimi.md": "d36a81142c7da1796b149f80eb65c27f87a3a9e1dff87e8d97dd20f85dcd4318",
+    "docs/review/HLD_v2.11_01_v0.21_09_v0.1_review_claudecode.md": "1f8156fa2f2308cffc20133ed19a4a5c27f5e97b73870f35a0ff5aae3ae43f63",
+    "docs/review/HLD_v2.11_01_v0.21_09_v0.1_review_kimi.md": "f2ec8d8cf5d3f915f137ea54861d9ac251d1b4eafa429e558dc46b2b3f5d89b6",
+    "docs/review/HLD_v2.12_01_v0.22_09_v0.2_review_claudecode.md": "7848af33dc511864a5dccfb3fa50d0187bcbb81d3d8c1bac5f744931815f49c8",
+    "docs/review/HLD_v2.13_01_v0.23_09_v0.3_review_claudecode.md": "79c3defd4d05f058852ca86824c30c645dea1d1637a0193554f4011502979310",
+    "docs/review/HLD_v2.8_01_v0.18_review_claudecode.md": "47f82ca322b4957b770e02f1b321cf842c55002a8153696a470eeb5a4d57a0c0",
+    "docs/review/HLD_v2.8_review_disposition.md": "87c6bf7f5db9917daa7aef21b8e6d761e46d4aa97834a2b85a768332fe84434d",
+    "docs/review/HLD_v2.9_01_v0.19_review_claudecode.md": "7fbe283f90687a43e43fbd33ab7c3b1654e263820df295b20637ee1dd83bd505",
+    "docs/review/HLD_v2.9_01_v0.19_review_codex.md": "116b578f04f14651d8f45875ad42458722fca7136f2eb9788dbc91c7ee9111a6",
+    "docs/review/HLD_v2.9_01_v0.19_review_kimi.md": "40216018515919f3bf8b5df58465f340f44db7b127efa42e7519154ad81bddb3",
+    "docs/review/HLD_v2.9_review_disposition.md": "319c7704e39291951c05ed1febf294b1ecefee4e8b574f27884fa66a7f7e2986",
+    "docs/dev/01_extension_mapping.md": "11290bb84951c827cf31b6bb949ff2560193568166b8bf1007c82b102689c7d8"
+  },
+  "pure_data_reasons": {
+    "docs/00_Framework_HLD_v2.10.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
+    "docs/00_Framework_HLD_v2.11.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
+    "docs/00_Framework_HLD_v2.12.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
+    "docs/00_Framework_HLD_v2.13.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
+    "docs/00_Framework_HLD_v2.14.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
+    "docs/00_Framework_HLD_v2.9.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
+    "docs/review/HLD_v2.10_01_v0.20_review_claudecode.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
+    "docs/review/HLD_v2.10_01_v0.20_review_codex.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
+    "docs/review/HLD_v2.10_01_v0.20_review_kimi.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
+    "docs/review/HLD_v2.11_01_v0.21_09_v0.1_review_claudecode.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
+    "docs/review/HLD_v2.11_01_v0.21_09_v0.1_review_kimi.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
+    "docs/review/HLD_v2.12_01_v0.22_09_v0.2_review_claudecode.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
+    "docs/review/HLD_v2.13_01_v0.23_09_v0.3_review_claudecode.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
+    "docs/review/HLD_v2.8_01_v0.18_review_claudecode.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
+    "docs/review/HLD_v2.8_review_disposition.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
+    "docs/review/HLD_v2.9_01_v0.19_review_claudecode.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
+    "docs/review/HLD_v2.9_01_v0.19_review_codex.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
+    "docs/review/HLD_v2.9_01_v0.19_review_kimi.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
+    "docs/review/HLD_v2.9_review_disposition.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
+    "docs/dev/01_extension_mapping.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。"
+  },
+  "executable_inputs": []
+}

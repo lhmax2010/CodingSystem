@@ -1,0 +1,145 @@
+{
+  "version": "task-001-content-v1",
+  "entries": [
+    {
+      "path": "docs/01_Contract_Spec_v0.10.md",
+      "line": 568,
+      "rule": "internal-host",
+      "digest": "42f590db6f2e70d141bddfaf25257a6ec08b3f908ff9ee79b4382c93a960bba2",
+      "reason": "01 契约或其评审的 fake_llm golden vector 固定伪端点；仅用于规范哈希判定，无真实内网绑定。保留冻结输入，精确到文件摘要和行，供本任务评审。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.11.md",
+      "line": 587,
+      "rule": "internal-host",
+      "digest": "873d88691bc21237f2480e13ea47ba565a8c5c4c1dbf41ebb019f6cbd8a5df9b",
+      "reason": "01 契约或其评审的 fake_llm golden vector 固定伪端点；仅用于规范哈希判定，无真实内网绑定。保留冻结输入，精确到文件摘要和行，供本任务评审。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.12.md",
+      "line": 607,
+      "rule": "internal-host",
+      "digest": "cb87e8d2964bbcf9c746afa6865043f8fd6925384d90b7b628728e4e69b08856",
+      "reason": "01 契约或其评审的 fake_llm golden vector 固定伪端点；仅用于规范哈希判定，无真实内网绑定。保留冻结输入，精确到文件摘要和行，供本任务评审。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.13.md",
+      "line": 626,
+      "rule": "internal-host",
+      "digest": "f3ad51b4b49266e2c8964b8478b9d9ceabbae9f762e46272d9d3c066dd28c85a",
+      "reason": "01 契约或其评审的 fake_llm golden vector 固定伪端点；仅用于规范哈希判定，无真实内网绑定。保留冻结输入，精确到文件摘要和行，供本任务评审。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.14.md",
+      "line": 630,
+      "rule": "internal-host",
+      "digest": "802875848f543ee3e3e3e90e9aa4ecf1f04cc13c53201c1d136ee9bdd73ce2c2",
+      "reason": "01 契约或其评审的 fake_llm golden vector 固定伪端点；仅用于规范哈希判定，无真实内网绑定。保留冻结输入，精确到文件摘要和行，供本任务评审。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.15.md",
+      "line": 635,
+      "rule": "internal-host",
+      "digest": "46e1ae77f5dc64bd80da65127c26c89b9b7d9d48f5f385e6555ac354e9e00442",
+      "reason": "01 契约或其评审的 fake_llm golden vector 固定伪端点；仅用于规范哈希判定，无真实内网绑定。保留冻结输入，精确到文件摘要和行，供本任务评审。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.16.md",
+      "line": 640,
+      "rule": "internal-host",
+      "digest": "00747399a6df2e8ddf4d6ca846f3dfe9e6cb1f326a6d35982909d7479b75f78a",
+      "reason": "01 契约或其评审的 fake_llm golden vector 固定伪端点；仅用于规范哈希判定，无真实内网绑定。保留冻结输入，精确到文件摘要和行，供本任务评审。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.17.md",
+      "line": 643,
+      "rule": "internal-host",
+      "digest": "a33a7b0a43fa8bea597b326d4feb9c0d15757cf3c99d8cfbdc825ac28c5de06d",
+      "reason": "01 契约或其评审的 fake_llm golden vector 固定伪端点；仅用于规范哈希判定，无真实内网绑定。保留冻结输入，精确到文件摘要和行，供本任务评审。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.18.md",
+      "line": 654,
+      "rule": "internal-host",
+      "digest": "871d68e8073f60b5b7cad8a349da85f1f034e63e86c24d20e300ec08766f676c",
+      "reason": "01 契约或其评审的 fake_llm golden vector 固定伪端点；仅用于规范哈希判定，无真实内网绑定。保留冻结输入，精确到文件摘要和行，供本任务评审。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.19.md",
+      "line": 667,
+      "rule": "internal-host",
+      "digest": "dc852798fb41ae1b52e282e0556dd95b4bce3a238440d04a0bb8c19d9766a82b",
+      "reason": "01 契约或其评审的 fake_llm golden vector 固定伪端点；仅用于规范哈希判定，无真实内网绑定。保留冻结输入，精确到文件摘要和行，供本任务评审。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.20.md",
+      "line": 686,
+      "rule": "internal-host",
+      "digest": "ac272a796149041349de6462ac036d3d162bf49e90a5f390b535f912b9d80da0",
+      "reason": "01 契约或其评审的 fake_llm golden vector 固定伪端点；仅用于规范哈希判定，无真实内网绑定。保留冻结输入，精确到文件摘要和行，供本任务评审。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.21.md",
+      "line": 690,
+      "rule": "internal-host",
+      "digest": "5214b19f34a0655579c0d190d44b7f74353c09542e2a0ade0a8c61eb23ddc658",
+      "reason": "01 契约或其评审的 fake_llm golden vector 固定伪端点；仅用于规范哈希判定，无真实内网绑定。保留冻结输入，精确到文件摘要和行，供本任务评审。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.22.md",
+      "line": 693,
+      "rule": "internal-host",
+      "digest": "972724f237d20879bc3d9e50b1a04c8c524745d09780c995fb7f2a5a0d1b414d",
+      "reason": "01 契约或其评审的 fake_llm golden vector 固定伪端点；仅用于规范哈希判定，无真实内网绑定。保留冻结输入，精确到文件摘要和行，供本任务评审。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.23.md",
+      "line": 693,
+      "rule": "internal-host",
+      "digest": "9764feb15416b4752785d334e46de39bbe37502dd2a2199310f16e47597e0b78",
+      "reason": "01 契约或其评审的 fake_llm golden vector 固定伪端点；仅用于规范哈希判定，无真实内网绑定。保留冻结输入，精确到文件摘要和行，供本任务评审。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.24.md",
+      "line": 694,
+      "rule": "internal-host",
+      "digest": "fc2484fc4761dcf8d901cc1bc144b2a47651420809b0b58b93b461cb08830932",
+      "reason": "01 契约或其评审的 fake_llm golden vector 固定伪端点；仅用于规范哈希判定，无真实内网绑定。保留冻结输入，精确到文件摘要和行，供本任务评审。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.7.md",
+      "line": 520,
+      "rule": "internal-host",
+      "digest": "d1dc31bc4d8bf81e18c05a7f0526a7031974aed5746b2eda31626f79fb4e6ccf",
+      "reason": "01 契约或其评审的 fake_llm golden vector 固定伪端点；仅用于规范哈希判定，无真实内网绑定。保留冻结输入，精确到文件摘要和行，供本任务评审。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.8.md",
+      "line": 535,
+      "rule": "internal-host",
+      "digest": "d5f6c5911db5c1a1eae67e2c0a6d24e84c37f87374cb1fa3703b929aa8ee13ef",
+      "reason": "01 契约或其评审的 fake_llm golden vector 固定伪端点；仅用于规范哈希判定，无真实内网绑定。保留冻结输入，精确到文件摘要和行，供本任务评审。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.9.md",
+      "line": 566,
+      "rule": "internal-host",
+      "digest": "f5dedd66d3fb5e839cf5b2a0ae82eb8bb36d695dc80ef22c12e51e21958c70d9",
+      "reason": "01 契约或其评审的 fake_llm golden vector 固定伪端点；仅用于规范哈希判定，无真实内网绑定。保留冻结输入，精确到文件摘要和行，供本任务评审。"
+    },
+    {
+      "path": "docs/review/01_v0.7_review_{kimi,claudecode,codex}.md",
+      "line": 65,
+      "rule": "internal-host",
+      "digest": "eae96329272f391cb5d34b51412445d0a64db28a4319b6ef665b1fee399cfb4b",
+      "reason": "01 契约或其评审的 fake_llm golden vector 固定伪端点；仅用于规范哈希判定，无真实内网绑定。保留冻结输入，精确到文件摘要和行，供本任务评审。"
+    },
+    {
+      "path": "tests/ci/test_offline.py",
+      "line": 16,
+      "rule": "internal-host",
+      "digest": "7b33105b9d8df1e7cfa32fd855595b1f25714d43bb3cbd73d796d0617144f3f4",
+      "reason": "pytest 的 intranet 标记属性表达式，不是主机名；08 §6.2 要求该标记，绑定完整文件摘要及本行。"
+    }
+  ]
+}

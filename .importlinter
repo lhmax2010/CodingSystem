@@ -1,0 +1,90 @@
+[importlinter]
+root_packages =
+    codingsystem
+    codingsystem_agent_skeletons
+include_external_packages = True
+
+[importlinter:contract:engine]
+name = Only engine imports LangGraph
+type = forbidden
+source_modules =
+    codingsystem.orchestration
+    codingsystem.sdk
+    codingsystem.contracts
+    codingsystem.llm
+    codingsystem.knowledge
+    codingsystem.context
+    codingsystem.evidence
+    codingsystem.ledger
+    codingsystem.resources
+    codingsystem.boards
+    codingsystem.stores
+    codingsystem.gateway
+    codingsystem.approval
+    codingsystem.release
+    codingsystem.entry
+    codingsystem_agent_skeletons
+forbidden_modules = langgraph
+allow_indirect_imports = True
+
+[importlinter:contract:framework]
+name = Framework does not import Agents
+type = forbidden
+source_modules = codingsystem
+forbidden_modules = codingsystem_agent_skeletons
+
+[importlinter:contract:agent]
+name = Agents use only SDK and contracts
+type = forbidden
+source_modules = codingsystem_agent_skeletons
+forbidden_modules = codingsystem
+ignore_imports =
+    codingsystem_agent_skeletons.* -> codingsystem.sdk
+    codingsystem_agent_skeletons.* -> codingsystem.sdk.**
+    codingsystem_agent_skeletons.* -> codingsystem.contracts
+    codingsystem_agent_skeletons.* -> codingsystem.contracts.**
+    codingsystem_agent_skeletons -> codingsystem.sdk
+    codingsystem_agent_skeletons -> codingsystem.sdk.**
+    codingsystem_agent_skeletons -> codingsystem.contracts
+    codingsystem_agent_skeletons -> codingsystem.contracts.**
+unmatched_ignore_imports_alerting = none
+allow_indirect_imports = True
+
+[importlinter:contract:contracts]
+name = Contracts do not depend on other framework subpackages
+type = forbidden
+source_modules = codingsystem.contracts
+forbidden_modules =
+    codingsystem.engine
+    codingsystem.orchestration
+    codingsystem.sdk
+    codingsystem.llm
+    codingsystem.knowledge
+    codingsystem.context
+    codingsystem.evidence
+    codingsystem.ledger
+    codingsystem.resources
+    codingsystem.boards
+    codingsystem.stores
+    codingsystem.gateway
+    codingsystem.approval
+    codingsystem.release
+    codingsystem.entry
+
+[importlinter:contract:worker]
+name = Workers cannot reach approval or release
+type = forbidden
+source_modules =
+    codingsystem.sdk
+    codingsystem_agent_skeletons
+forbidden_modules =
+    codingsystem.approval
+    codingsystem.release
+
+[importlinter:contract:root-engine]
+name = Framework root does not import LangGraph
+type = forbidden
+source_modules = codingsystem
+forbidden_modules = langgraph
+as_packages = False
+allow_indirect_imports = True
