@@ -1,3 +1,4 @@
+本文件已停用（2026-11-11 起），开发状态以 docs/dev/STATUS.md 为准
 # Handoff Summary
 
 当前阶段 = HLD v2.2（第二轮）+ 01_Contract_Spec v0.12（第十二轮）三方评审。
