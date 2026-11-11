@@ -2,8 +2,26 @@
 # The only gate entry: preflight, constrained scope, then strictly serial checks.
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-report="docs/dev/deliver/task-001/gate_report.txt"
-if [[ "${1:-}" != "--in-scope" ]]; then
+if [[ $# -lt 1 || $# -gt 2 || ! "${1:-}" =~ ^task-[0-9]{3}$ || ( $# -eq 2 && "$2" != "--in-scope" ) ]]; then
+  printf 'Usage: ci/gate.sh task-NNN\n' >&2
+  exit 2
+fi
+task_id=$1
+report="docs/dev/deliver/${task_id}/gate_report.txt"
+if git ls-files --error-unmatch "$report" >/dev/null 2>&1; then
+  printf 'Refusing to overwrite committed gate evidence: %s\n' "$report" >&2
+  exit 2
+fi
+verify_python() {
+  local actual
+  actual=$(.venv/bin/python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")') || return $?
+  if [[ "$actual" != "3.12" ]]; then
+    printf 'Interpreter mismatch: expected 3.12, got %s\n' "$actual" >&2
+    return 1
+  fi
+}
+verify_python
+if [[ "${2:-}" != "--in-scope" ]]; then
   start=$SECONDS
   while true; do
     free -m
@@ -23,7 +41,7 @@ if [[ "${1:-}" != "--in-scope" ]]; then
   mkdir -p "$(dirname "$report")"
   : > "$report"
   exec systemd-run --user --scope -p CPUQuota=200% -p MemoryMax=3G -p MemorySwapMax=0 \
-    nice -n 19 ionice -c3 bash ci/gate.sh --in-scope
+    nice -n 19 ionice -c3 bash ci/gate.sh "$task_id" --in-scope
 fi
 exec > >(tee -a "$report") 2>&1
 finish() {
@@ -62,9 +80,11 @@ run() {
   fi
 }
 lock_check() {
+  verify_python || return $?
   uv lock --check --offline || return $?
-  uv sync --locked --no-install-workspace --no-python-downloads || return $?
-  uv sync --locked --all-packages --no-build-isolation --no-python-downloads || return $?
+  uv sync --python /usr/bin/python3.12 --locked --no-install-workspace --no-python-downloads || return $?
+  uv sync --python /usr/bin/python3.12 --locked --all-packages --no-build-isolation --no-python-downloads || return $?
+  verify_python || return $?
   .venv/bin/python --version
 }
 ruff_check() {
