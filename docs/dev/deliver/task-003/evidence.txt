@@ -1,0 +1,256 @@
+task-003 evidence (L0: nice -n 19 ionice -c3; serial)
+
+Opening reconciliation: main HEAD 76d3352e1c3df2d854cff132a90377e8d4ef8c14.
+STATUS task-002 implementation/delivery ancestry matched; subsequent commits add only two M0a reviews.
+Opening git status --porcelain: empty. Opening git pull --rebase: Already up to date.
+
+Before mv: all source hashes, target absence and D23 file checks (captured output)
+1581c53a679a6b141bda67adc06c5c5d2a7fddfc6796e2d0070afd5c9debe620  /home/linhao/Downloads/08_Codex_Dev_Guide_v1.1.md
+D23 08_Codex_Dev_Guide_v1.1.md: no signal
+81da755af67a260b83cd4257b5ab9ae8cd2b29995b9dc53f473945f0871d4e86  /home/linhao/Downloads/09_Phased_Dev_Plan_v0.5.md
+D23 09_Phased_Dev_Plan_v0.5.md: no signal
+e21861c777d66c7df48d2fe3717e6dd308693a0cc137693b858fbc4af441bc63  /home/linhao/Downloads/M0a_review_disposition.md
+D23 M0a_review_disposition.md: no signal
+All 3 source hashes, destination absence and D23 prechecks PASS; no files moved yet.
+
+Moves executed, with no overwrite:
+nice -n 19 ionice -c3 mv -n /home/linhao/Downloads/08_Codex_Dev_Guide_v1.1.md docs/
+nice -n 19 ionice -c3 mv -n /home/linhao/Downloads/09_Phased_Dev_Plan_v0.5.md docs/
+nice -n 19 ionice -c3 mv -n /home/linhao/Downloads/M0a_review_disposition.md docs/review/
+
+$ nice -n 19 ionice -c3 git log -4 --oneline
+76d3352 review: M0a 08 v1 + extension mapping + gate matrix + CI (claudecode)
+a55c241 review: M0a 08 v1 + extension mapping + gate matrix + CI (codex)
+7ab70a2 docs: record task-002 verification and development rules
+1b6775e docs: apply reviewed extension batches and precise gate consumption mapping
+exit=0
+
+$ nice -n 19 ionice -c3 git log -1 --format=%H -- docs/dev/STATUS.md
+7ab70a28e5d57c3c427870f8f2176688616b1547
+exit=0
+
+$ nice -n 19 ionice -c3 sha256sum docs/08_Codex_Dev_Guide_v1.1.md docs/09_Phased_Dev_Plan_v0.5.md docs/review/M0a_review_disposition.md
+1581c53a679a6b141bda67adc06c5c5d2a7fddfc6796e2d0070afd5c9debe620  docs/08_Codex_Dev_Guide_v1.1.md
+81da755af67a260b83cd4257b5ab9ae8cd2b29995b9dc53f473945f0871d4e86  docs/09_Phased_Dev_Plan_v0.5.md
+e21861c777d66c7df48d2fe3717e6dd308693a0cc137693b858fbc4af441bc63  docs/review/M0a_review_disposition.md
+exit=0
+
+$ nice -n 19 ionice -c3 ls -l /home/linhao/Downloads/08_Codex_Dev_Guide_v1.1.md /home/linhao/Downloads/09_Phased_Dev_Plan_v0.5.md /home/linhao/Downloads/M0a_review_disposition.md
+ls: cannot access '/home/linhao/Downloads/08_Codex_Dev_Guide_v1.1.md': No such file or directory
+ls: cannot access '/home/linhao/Downloads/09_Phased_Dev_Plan_v0.5.md': No such file or directory
+ls: cannot access '/home/linhao/Downloads/M0a_review_disposition.md': No such file or directory
+exit=2
+
+$ nice -n 19 ionice -c3 sha256sum docs/08_Codex_Dev_Guide_v1.md docs/09_Phased_Dev_Plan_v0.4.md docs/dev/deliver/task-001/gate_report.txt docs/dev/deliver/task-002/gate_report.txt uv.lock
+181b81c236ab173c90a087219af4f55989e034c0906c896080a50ddb75886ba1  docs/08_Codex_Dev_Guide_v1.md
+fa51f1f04f1fba0857a6bec089e1f68de09d8b8d52d2a0986328759a8a448bc3  docs/09_Phased_Dev_Plan_v0.4.md
+af4d0553bca619603b0c6cd586c227717099be3306d2dde26328b0ad47a0f96b  docs/dev/deliver/task-001/gate_report.txt
+10e9e1b66260e49cf2cb536cd5732672047385180c545d7c4b34ba7b37d7cc61  docs/dev/deliver/task-002/gate_report.txt
+3739076d1208bd5f6c291ff67856f75acd8590affe0ca6c98586512822496ad3  uv.lock
+exit=0
+
+$ nice -n 19 ionice -c3 git diff --check
+exit=0
+
+$ nice -n 19 ionice -c3 python3 /tmp/task003_audit.py
+{
+  "original_clauses_preserved": 75,
+  "rows": 120,
+  "parents_unassigned": 18,
+  "leaves": 102,
+  "leaf_batches": {
+    "1": 63,
+    "2": 25,
+    "3": 14
+  },
+  "test_categories": {
+    "P1": 28,
+    "P2": 22,
+    "P4": 29,
+    "P3": 20,
+    "P5": 1,
+    "P6": 6,
+    "P7": 6
+  },
+  "test_total": 112,
+  "demo_steps": {
+    "1 启动与范围": 5,
+    "2 本地构建/可选 mic": 9,
+    "3 Compiler AI 修复": 5,
+    "4 后续空壳 Agent": 3,
+    "5 审批/模拟发布/反馈": 10,
+    "6 编排重启可靠性": 3
+  },
+  "demo_common": 15,
+  "matrix_P0_P2_rows": 25,
+  "structural_errors": [],
+  "batch_violations": []
+}
+exit=0
+
+Audit implementation (temporary L0 helper, included here for reproduction):
+from pathlib import Path
+import re, subprocess, collections, json
+p=Path("docs/dev/01_extension_mapping.md"); s=p.read_text()
+rows={}; errors=[]
+for line in s.splitlines():
+    if line.startswith("| B7-"):
+        c=[v.strip() for v in line.strip("|").split("|")]
+        if c[0] in rows: errors.append("duplicate key "+c[0])
+        rows[c[0]]=c
+        if len(c)!=10 or c[5]!="设计 / 开发" or c[6]!="": errors.append("columns "+c[0])
+# Only original B7 group/item keys can parent the peer field-group keys.
+parents={k for k in rows if re.fullmatch(r"B7-\d+-\d+",k) and any(o.startswith(k+"-") for o in rows)}
+leaves={k:c for k,c in rows.items() if k not in parents}
+batch={}
+for k,c in rows.items():
+    bs=re.findall("第[一二三]批",c[3])
+    if k in parents:
+        if bs or "父键" not in c[3]: errors.append("parent assigned "+k)
+    else:
+        if len(bs)!=1: errors.append("leaf batch "+k)
+        else: batch[k]={"第一批":1,"第二批":2,"第三批":3}[bs[0]]
+old=subprocess.check_output(["git","show","76d3352e1c3df2d854cff132a90377e8d4ef8c14:docs/dev/01_extension_mapping.md"],text=True)
+oldraw={c[0]:c[1] for line in old.splitlines() if line.startswith("| B7-") and (c:=[v.strip() for v in line.strip("|").split("|")]) and re.fullmatch(r"B7-\d+-\d+",c[0])}
+assert len(oldraw)==75
+errors.extend("original changed "+k for k,v in oldraw.items() if rows[k][1]!=v)
+testcounts=collections.Counter(); violations=[]; alltests=set()
+pat=r"B7-\d+-\d+(?:-[a-z0-9]+)*"
+for line in s.splitlines():
+    if line.startswith("| T11.3-"):
+        c=[v.strip() for v in line.strip("|").split("|")]
+        tid=c[0].split()[0]
+        if tid in alltests: errors.append("duplicate test "+tid)
+        alltests.add(tid); phase=int(c[1][1]); testcounts[c[1]]+=1
+        for k in re.findall(pat,c[3]):
+            if k not in leaves: errors.append(tid+" references non-leaf "+k)
+            elif (phase<=4 and batch[k]>2) or (phase<=2 and batch[k]>1): violations.append((tid,c[1],k,batch.get(k)))
+demo={}
+for line in s.split("## Demo 六步消费自查")[1].split("## 定义与消费边界")[0].splitlines():
+    if re.match(r"\| [1-6] ",line):
+        c=[v.strip() for v in line.strip("|").split("|")]
+        keys=re.findall(pat,c[1]); demo[c[0]]=keys
+        for k in keys:
+            if k not in leaves or batch[k]!=1: violations.append((c[0],k,batch.get(k)))
+common=s.split("共同部署前提（09 §4.2）：")[1].split("；均第一批")[0]
+commonkeys=re.findall(pat,common)
+for k in commonkeys:
+    if batch.get(k)!=1: violations.append(("Demo common",k,batch.get(k)))
+mat=Path("docs/dev/gate_matrix.md").read_text(); matrix=[]
+for line in mat.splitlines():
+    if re.match(r"\| P[012]-",line):
+        c=[v.strip() for v in line.strip("|").split("|")]
+        if len(c)!=8 or not c[7]: errors.append("matrix entry "+c[0])
+        matrix.append(c[0])
+        for k in re.findall(pat,c[7]):
+            if k not in leaves or batch.get(k)!=1: errors.append("matrix batch "+c[0]+" "+k)
+result={"original_clauses_preserved":len(oldraw),"rows":len(rows),"parents_unassigned":len(parents),"leaves":len(leaves),"leaf_batches":dict(collections.Counter(batch.values())),"test_categories":dict(testcounts),"test_total":len(alltests),"demo_steps":{k:len(v) for k,v in demo.items()},"demo_common":len(commonkeys),"matrix_P0_P2_rows":len(matrix),"structural_errors":errors,"batch_violations":violations}
+Path("/tmp/task003_audit.json").write_text(json.dumps(result,ensure_ascii=False,indent=2)+"\n")
+print(json.dumps(result,ensure_ascii=False,indent=2))
+assert not errors and not violations
+
+Initial helper error (not a gate failure): lexical prefix matching treated B7-5-7-bench as a parent of its peer bench-static. Initial output reported parent assigned / T11.3-067 and T11.3-038 non-leaf references. Corrected parent detection to original numeric B7 group/item keys; batch assignments were not changed to satisfy the helper. Final output above.
+
+Final input verification (raw bytes; unchanged contents):
+1581c53a679a6b141bda67adc06c5c5d2a7fddfc6796e2d0070afd5c9debe620  docs/08_Codex_Dev_Guide_v1.1.md: OK; source absent; check_file=[]; case-insensitive raw marker=False
+81da755af67a260b83cd4257b5ab9ae8cd2b29995b9dc53f473945f0871d4e86  docs/09_Phased_Dev_Plan_v0.5.md: OK; source absent; check_file=[]; case-insensitive raw marker=False
+e21861c777d66c7df48d2fe3717e6dd308693a0cc137693b858fbc4af441bc63  docs/review/M0a_review_disposition.md: OK; source absent; check_file=[]; case-insensitive raw marker=False
+$ nice -n 19 ionice -c3 python3 /tmp/task003_audit.py
+{
+  "original_clauses_preserved": 75,
+  "rows": 120,
+  "parents_unassigned": 18,
+  "leaves": 102,
+  "leaf_batches": {
+    "1": 63,
+    "2": 25,
+    "3": 14
+  },
+  "test_categories": {
+    "P1": 28,
+    "P2": 22,
+    "P4": 29,
+    "P3": 20,
+    "P5": 1,
+    "P6": 6,
+    "P7": 6
+  },
+  "test_total": 112,
+  "demo_steps": {
+    "1 启动与范围": 5,
+    "2 本地构建/可选 mic": 9,
+    "3 Compiler AI 修复": 5,
+    "4 后续空壳 Agent": 3,
+    "5 审批/模拟发布/反馈": 10,
+    "6 编排重启可靠性": 3
+  },
+  "demo_common": 15,
+  "matrix_P0_P2_rows": 25,
+  "structural_errors": [],
+  "batch_violations": []
+}
+
+exit=0
+$ nice -n 19 ionice -c3 git diff --check
+
+exit=0
+$ nice -n 19 ionice -c3 git diff --name-only 76d3352e1c3df2d854cff132a90377e8d4ef8c14 HEAD
+ci/d23_policy.json
+ci/d23_scanner_digests.json
+docs/08_Codex_Dev_Guide_v1.1.md
+docs/09_Phased_Dev_Plan_v0.5.md
+docs/dev/01_extension_mapping.md
+docs/dev/gate_matrix.md
+docs/review/M0a_review_disposition.md
+
+exit=0
+$ nice -n 19 ionice -c3 sha256sum docs/dev/01_extension_mapping.md ci/d23_policy.json ci/d23_scanner_digests.json
+80917f78a110be122bfc7fdd8142bd80aa899bdbca28c9924f469e9293665e5b  docs/dev/01_extension_mapping.md
+4f3b5462186c03b02add90689eb5c65e8c153f544a22032627b86bf5ee848f65  ci/d23_policy.json
+89f07b00320fedd05a76b50893e5a17d703916201c5333781251a58123bafac3  ci/d23_scanner_digests.json
+
+exit=0
+$ nice -n 19 ionice -c3 git show -s --format=%H%nAuthor: %an <%ae>%nCommitter: %cn <%ce> HEAD
+bad2eab247a4e1d6ed939c0b3a7ad73099867367
+Author: Hao Lin <hao.lin@samsung.com>
+Committer: Hao Lin <hao.lin@samsung.com>
+
+exit=0
+$ nice -n 19 ionice -c3 free -m
+               total        used        free      shared  buff/cache   available
+Mem:           31540       22389        3066         762        7576        9151
+Swap:           4095        4095           0
+
+exit=0
+$ nice -n 19 ionice -c3 cat /proc/loadavg
+0.62 1.04 1.25 1/2442 2051356
+
+exit=0
+$ nice -n 19 ionice -c3 nproc
+20
+
+exit=0
+STATUS environment section byte-equivalent: PASS
+
+$ nice -n 19 ionice -c3 bash ci/gate.sh task-003
+Opening preflight captured output:
+               total        used        free      shared  buff/cache   available
+Mem:           31540       22403        3053         772        7586        9137
+Swap:           4095        4095           0
+0.65 1.04 1.25 1/2437 2051374
+Running as unit: run-r2f10e080e5054dd8a40241f6137f17ba.scope
+Verified cgroup cpu.max: 200000 100000; memory.max: 3221225472; memory.swap.max: 0
+Full constrained process output: gate_report.txt
+GATE 1-lock PASS elapsed=0s
+GATE 2-ruff PASS elapsed=0s
+GATE 3-mypy PASS elapsed=1s
+GATE 4-import-linter PASS elapsed=0s
+GATE 5-pytest-coverage PASS elapsed=3s
+GATE 6-d23 PASS elapsed=10s
+GATE 7-content PASS elapsed=0s
+GATE 8-contract SKIP elapsed=0s 尚无 contracts 包，跳过并在报告中注明（仅目录空壳，无契约模型）
+GATE 9-cf SKIP elapsed=0s 尚无 contracts 包，跳过并在报告中注明（仅目录空壳，无 CF 实现）
+ALL-END 2026-11-11T15:00:31Z status=ok rc=0
+exit=0
+gate_report.txt sha256: 7bbb60612825d0bf9517ed1461e68d936291cd53dc40c716181b2fb197c24a04
+Final text check: STATUS, REPORT, evidence and gate_report have zero current-policy D23/content findings. Old guide/plan, two historical gate reports and uv.lock hashes unchanged. This is a targeted post-result text check, not a second full gate and not D23 compliance evidence.

@@ -1,0 +1,125 @@
+Verified cgroup cpu.max: 200000 100000; memory.max: 3221225472; memory.swap.max: 0
+HEAD: bad2eab247a4e1d6ed939c0b3a7ad73099867367
+Time: 2026-11-11T15:00:17Z
+Resources: CPUQuota=200% MemoryMax=3G MemorySwapMax=0 nice=19 ionice=idle
+               total        used        free      shared  buff/cache   available
+Mem:           31540       22411        3044         772        7586        9128
+Swap:           4095        4095           0
+0.65 1.04 1.25 1/2431 2051395
+3739076d1208bd5f6c291ff67856f75acd8590affe0ca6c98586512822496ad3  uv.lock
+
+GATE 1-lock START
+Resolved 27 packages in 1ms
+Resolved 27 packages in 1ms
+Uninstalled 2 packages in 2ms
+ - codingsystem-agent-skeletons==0.0.1 (from file:///home/linhao/Toolchain/development/CodingSystem/agents/skeletons)
+ - codingsystem-framework==0.0.1 (from file:///home/linhao/Toolchain/development/CodingSystem)
+Resolved 27 packages in 1ms
+Installed 2 packages in 52ms
+ + codingsystem-agent-skeletons==0.0.1 (from file:///home/linhao/Toolchain/development/CodingSystem/agents/skeletons)
+ + codingsystem-framework==0.0.1 (from file:///home/linhao/Toolchain/development/CodingSystem)
+Python 3.12.3
+GATE 1-lock PASS elapsed=0s
+
+GATE 2-ruff START
+All checks passed!
+31 files already formatted
+GATE 2-ruff PASS elapsed=0s
+
+GATE 3-mypy START
+Success: no issues found in 31 source files
+GATE 3-mypy PASS elapsed=1s
+
+GATE 4-import-linter START
+=============
+Import Linter
+=============
+
+---------
+Contracts
+---------
+
+Analyzed 18 files, 0 dependencies.
+----------------------------------
+
+Only engine imports LangGraph KEPT
+Framework does not import Agents KEPT
+Agents use only SDK and contracts KEPT
+Contracts do not depend on other framework subpackages KEPT
+Workers cannot reach approval or release KEPT
+Framework root does not import LangGraph KEPT
+
+Contracts: 6 kept, 0 broken.
+GATE 4-import-linter PASS elapsed=0s
+
+GATE 5-pytest-coverage START
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.3.5, pluggy-1.7.0
+rootdir: /home/linhao/Toolchain/development/CodingSystem
+configfile: pyproject.toml
+testpaths: tests, agents/skeletons/tests
+plugins: hypothesis-6.170.15, cov-7.1.0
+collected 52 items
+
+tests/ci/test_checks.py .......                                          [ 13%]
+tests/ci/test_coverage.py .                                              [ 15%]
+tests/ci/test_d23.py ............................                        [ 69%]
+tests/ci/test_gate_entry.py .......                                      [ 82%]
+tests/ci/test_imports.py ......                                          [ 94%]
+tests/ci/test_offline.py .s                                              [ 98%]
+agents/skeletons/tests/test_installation.py .                            [100%]
+
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.3-final-0 ________________
+
+Name                                                            Stmts   Miss Branch BrPart  Cover   Missing
+-----------------------------------------------------------------------------------------------------------
+agents/skeletons/src/codingsystem_agent_skeletons/__init__.py       0      0      0      0   100%
+ci/__init__.py                                                      0      0      0      0   100%
+ci/checks.py                                                      105      3     54      2    97%   140-141, 160
+ci/coverage_check.py                                               31      1     10      1    95%   46
+ci/d23.py                                                          99      1     56      1    99%   57
+framework/__init__.py                                               0      0      0      0   100%
+framework/approval/__init__.py                                      0      0      0      0   100%
+framework/boards/__init__.py                                        0      0      0      0   100%
+framework/context/__init__.py                                       0      0      0      0   100%
+framework/contracts/__init__.py                                     0      0      0      0   100%
+framework/engine/__init__.py                                        0      0      0      0   100%
+framework/entry/__init__.py                                         0      0      0      0   100%
+framework/evidence/__init__.py                                      0      0      0      0   100%
+framework/gateway/__init__.py                                       0      0      0      0   100%
+framework/knowledge/__init__.py                                     0      0      0      0   100%
+framework/ledger/__init__.py                                        0      0      0      0   100%
+framework/llm/__init__.py                                           0      0      0      0   100%
+framework/orchestration/__init__.py                                 0      0      0      0   100%
+framework/release/__init__.py                                       0      0      0      0   100%
+framework/resources/__init__.py                                     0      0      0      0   100%
+framework/sdk/__init__.py                                           0      0      0      0   100%
+framework/stores/__init__.py                                        0      0      0      0   100%
+-----------------------------------------------------------------------------------------------------------
+TOTAL                                                             235      5    120      4    97%
+Coverage JSON written to file .coverage.json
+Required test coverage of 80.0% reached. Total coverage: 97.46%
+=========================== short test summary info ============================
+SKIPPED [1] tests/ci/test_offline.py:16: intranet: disabled on development machine
+======================== 51 passed, 1 skipped in 1.79s =========================
+Global line coverage: 97.87% >= 80%
+Critical framework/orchestration: N/A (no measured branches; threshold remains 95%)
+Critical framework/ledger: N/A (no measured branches; threshold remains 95%)
+Critical framework/approval: N/A (no measured branches; threshold remains 95%)
+Critical framework/release: N/A (no measured branches; threshold remains 95%)
+Critical framework/sdk/side_effect.py: N/A (no measured branches; threshold remains 95%)
+Critical framework/sdk/side_effect: N/A (no measured branches; threshold remains 95%)
+Provisional annotations: 0
+GATE 5-pytest-coverage PASS elapsed=3s
+
+GATE 6-d23 START
+D23 installed distributions: 26; failures: 0
+GATE 6-d23 PASS elapsed=10s
+
+GATE 7-content START
+Current content findings: 0
+GATE 7-content PASS elapsed=0s
+GATE 8-contract SKIP elapsed=0s 尚无 contracts 包，跳过并在报告中注明（仅目录空壳，无契约模型）
+GATE 9-cf SKIP elapsed=0s 尚无 contracts 包，跳过并在报告中注明（仅目录空壳，无 CF 实现）
+ALL-END 2026-11-11T15:00:31Z status=ok rc=0
