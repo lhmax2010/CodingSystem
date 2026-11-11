@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ci.d23 import POLICY_VERSION, SIGNALS, check_file, digest, php_package
+from ci.installed import unlisted_files
 
 
 def git(*args: str) -> bytes:
@@ -74,6 +75,14 @@ def check_content() -> int:
     return int(failures != 0)
 
 
+def check_content_stdin() -> int:
+    """Scan input without file-based exemptions or disclosing matched text."""
+    hits = content_hits(sys.stdin.buffer.read(), json_file("ci/content_policy.json")["rules"])
+    for rule, line in hits:
+        print(f"CONTENT_STDIN_FAIL line={line} rule={rule}")
+    return int(bool(hits))
+
+
 def historical_content() -> int:
     """Scan each reachable historical blob once, retaining commit/path provenance."""
     rules = json_file("ci/content_policy.json")["rules"]
@@ -125,6 +134,7 @@ def check_d23() -> int:
         if php_package(package["name"]):
             failures.append(f"lock: {package['name']}: php_metadata")
     installed = 0
+    owned: set[Path] = set()
     for distribution in metadata.distributions():
         installed += 1
         name = distribution.metadata["Name"]
@@ -136,11 +146,13 @@ def check_d23() -> int:
             continue
         for relative in distribution.files:
             path = Path(str(distribution.locate_file(relative)))
+            owned.add(path.resolve())
             if not path.exists():
                 failures.append(f"distribution: {name}: missing_file {relative}")
                 continue
             for reason in check_file(path):
                 failures.append(f"distribution: {name}/{relative}: {reason}")
+    failures.extend(unlisted_files(Path(sys.prefix), owned))
     for failure in failures:
         print(f"D23_FAIL {failure}")
     print(f"D23 installed distributions: {installed}; failures: {len(failures)}")
@@ -149,9 +161,18 @@ def check_d23() -> int:
 
 def main() -> int:
     """Dispatch only explicit inspection commands."""
-    actions = {"content": check_content, "history": historical_content, "d23": check_d23}
+    from ci.registrations import check_bypass, check_provisional
+
+    actions = {
+        "content": check_content,
+        "content-stdin": check_content_stdin,
+        "history": historical_content,
+        "d23": check_d23,
+        "bypass": check_bypass,
+        "provisional": check_provisional,
+    }
     if len(sys.argv) != 2 or sys.argv[1] not in actions:
-        print("Usage: python -m ci.checks content|history|d23")
+        print("Usage: python -m ci.checks " + "|".join(actions))
         return 2
     return actions[sys.argv[1]]()
 

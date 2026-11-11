@@ -1,12 +1,13 @@
 {
-  "version": "task-001-content-v1",
+  "version": "task-004-content-v2",
   "rules": {
-    "private-key": "-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----",
-    "token": "(?i)(?:gh[pousr]_[a-z0-9]{30,}|github_pat_[a-z0-9_]{40,}|AKIA[A-Z0-9]{16}|sk-[a-z0-9]{32,})",
-    "credential-assignment": "(?i)(?:password|passwd|api_key|access_token|authorization|cookie)\\s*[:=]\\s*[\"'](?!<|\\$\\{|example|placeholder|redacted)[a-z0-9/+=_.-]{20,}[\"']",
+    "private-key": "-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----",
+    "token": "(?i)(?:gh[pousr]_[a-z0-9]{30,}|github_pat_[a-z0-9_]{40,}|AKIA[A-Z0-9]{16}|sk-(?:proj-|ant-[a-z0-9]+-)?[a-z0-9_-]{32,}|xox[abprs]-[a-z0-9-]{10,}|glpat-[a-z0-9_-]{20,}|AIza[0-9a-z_-]{35})",
+    "credential-assignment": "(?i)\\b(?:password|passwd|pwd|secret|client_secret|api[_-]?key|access[_-]?token|auth[_-]?token|private[_-]?token|authorization|cookie)\\s*[:=]\\s*[\"']?[^\\s\"'`<>]{8,}",
     "internal-host": "(?i)\\b[a-z0-9][a-z0-9.-]*\\.(?:internal|intranet|corp|local|sec\\.samsung\\.net)\\b",
-    "private-ipv4": "(?<![\\w.])(?:10\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}|192\\.168\\.\\d{1,3}\\.\\d{1,3}|172\\.(?:1[6-9]|2\\d|3[01])\\.\\d{1,3}\\.\\d{1,3})(?![\\w.])",
+    "private-ipv4": "(?<![\\w.])(?:10\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}|192\\.168\\.\\d{1,3}\\.\\d{1,3}|172\\.(?:1[6-9]|2\\d|3[01])\\.\\d{1,3}\\.\\d{1,3})(?!\\w|\\.\\d)",
     "private-ipv6": "(?i)(?<![\\w:])(?:f[cd][0-9a-f]{2}|fe80):[0-9a-f:]+",
-    "perforce-path": "(?<![:/])//(?:SHARED|depot|[A-Za-z0-9_-]+/\\[[^\\]\\n]+\\])/"
+    "perforce-path": "(?<![:/\\w])//[A-Za-z][A-Za-z0-9_-]*/[^\\s/]+/",
+    "authorization-bearer": "(?i)\\bBearer[ \\t]+[A-Za-z0-9._~+/=-]+"
   }
 }

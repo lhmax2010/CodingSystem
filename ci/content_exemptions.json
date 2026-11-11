@@ -1,5 +1,5 @@
 {
-  "version": "task-001-content-v1",
+  "version": "task-004-content-v2",
   "entries": [
     {
       "path": "docs/01_Contract_Spec_v0.10.md",
@@ -140,6 +140,643 @@
       "rule": "internal-host",
       "digest": "7b33105b9d8df1e7cfa32fd855595b1f25714d43bb3cbd73d796d0617144f3f4",
       "reason": "pytest 的 intranet 标记属性表达式，不是主机名；08 §6.2 要求该标记，绑定完整文件摘要及本行。"
+    },
+    {
+      "path": "agents/skeletons/tests/test_agent_offline.py",
+      "line": 15,
+      "rule": "internal-host",
+      "digest": "8293d56439aee5722ef1a25369a9f8eebaf5e0ba31e3088dc6a7bcf0fed38e71",
+      "reason": "task-004 人工逐行核对：pytest 的 intranet 标记属性表达式，非主机名；C5 要求两个测试树的哨兵。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.10.md",
+      "line": 312,
+      "rule": "authorization-bearer",
+      "digest": "3de75579cd803e29032d07fb937ab0d1f74f119b5ee2670fa485b61ee8679069",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.10.md",
+      "line": 351,
+      "rule": "authorization-bearer",
+      "digest": "3de75579cd803e29032d07fb937ab0d1f74f119b5ee2670fa485b61ee8679069",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.11.md",
+      "line": 312,
+      "rule": "authorization-bearer",
+      "digest": "f7a7030aa5d6e49cd48d5cd95ffe5a31bbc0d1da0263678082c6567af21e430b",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.11.md",
+      "line": 351,
+      "rule": "authorization-bearer",
+      "digest": "f7a7030aa5d6e49cd48d5cd95ffe5a31bbc0d1da0263678082c6567af21e430b",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.2.md",
+      "line": 294,
+      "rule": "authorization-bearer",
+      "digest": "ec10c3df10221070b6c9c986f7c9819f9a0436840dab08b72f64d157e72bc808",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.2.md",
+      "line": 332,
+      "rule": "authorization-bearer",
+      "digest": "ec10c3df10221070b6c9c986f7c9819f9a0436840dab08b72f64d157e72bc808",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.3.md",
+      "line": 302,
+      "rule": "authorization-bearer",
+      "digest": "b94657757d2e247e941881f583d948cf4897cb02bf04d4a3c7963fa3cd10f9c3",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.3.md",
+      "line": 341,
+      "rule": "authorization-bearer",
+      "digest": "b94657757d2e247e941881f583d948cf4897cb02bf04d4a3c7963fa3cd10f9c3",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.4.md",
+      "line": 303,
+      "rule": "authorization-bearer",
+      "digest": "4b77b0240a0c1c1d321948e1ceb47aaff3e421af75d0e987265c9dd0da4ffdb8",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.4.md",
+      "line": 342,
+      "rule": "authorization-bearer",
+      "digest": "4b77b0240a0c1c1d321948e1ceb47aaff3e421af75d0e987265c9dd0da4ffdb8",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.5.md",
+      "line": 308,
+      "rule": "authorization-bearer",
+      "digest": "31f797c594275295a1ba76fb931d979235b2a21fa77a1f122816b3031f3574a0",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.5.md",
+      "line": 347,
+      "rule": "authorization-bearer",
+      "digest": "31f797c594275295a1ba76fb931d979235b2a21fa77a1f122816b3031f3574a0",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.6.md",
+      "line": 308,
+      "rule": "authorization-bearer",
+      "digest": "17fa30d53439267c82d0157c8d57f395f75070de0dd9e3e3ffa0c2f0b0b3e2c4",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.6.md",
+      "line": 347,
+      "rule": "authorization-bearer",
+      "digest": "17fa30d53439267c82d0157c8d57f395f75070de0dd9e3e3ffa0c2f0b0b3e2c4",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.7.md",
+      "line": 309,
+      "rule": "authorization-bearer",
+      "digest": "fa8763968396d79c3df08c97bb8fe5e4161ce2ca89ce03367bb47cd84cb90cdd",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.7.md",
+      "line": 348,
+      "rule": "authorization-bearer",
+      "digest": "fa8763968396d79c3df08c97bb8fe5e4161ce2ca89ce03367bb47cd84cb90cdd",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.8.md",
+      "line": 312,
+      "rule": "authorization-bearer",
+      "digest": "c7e0c32cc9eea68ce787fc1c690c19446040398bb9506dbd94ba38f5da97ddf8",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.8.md",
+      "line": 351,
+      "rule": "authorization-bearer",
+      "digest": "c7e0c32cc9eea68ce787fc1c690c19446040398bb9506dbd94ba38f5da97ddf8",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.9.md",
+      "line": 312,
+      "rule": "authorization-bearer",
+      "digest": "35e655d73e28a16fcdebc519c10102d75f371242b6a900f6c36fdb32b2063ead",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v0.9.md",
+      "line": 351,
+      "rule": "authorization-bearer",
+      "digest": "35e655d73e28a16fcdebc519c10102d75f371242b6a900f6c36fdb32b2063ead",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v1.0_draft_frozen.md",
+      "line": 312,
+      "rule": "authorization-bearer",
+      "digest": "0094d2f4ce52a11e9a89962e34355d942475a19a585d48c9194f2d47dbb08a12",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v1.0_draft_frozen.md",
+      "line": 351,
+      "rule": "authorization-bearer",
+      "digest": "0094d2f4ce52a11e9a89962e34355d942475a19a585d48c9194f2d47dbb08a12",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.0.md",
+      "line": 459,
+      "rule": "authorization-bearer",
+      "digest": "c23a2114cc415308b3d17d61f7e3b57f6c655b679ce3fb8d6be2799189a7c420",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.0.md",
+      "line": 593,
+      "rule": "authorization-bearer",
+      "digest": "c23a2114cc415308b3d17d61f7e3b57f6c655b679ce3fb8d6be2799189a7c420",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.10.md",
+      "line": 587,
+      "rule": "authorization-bearer",
+      "digest": "162e66c18714e65c02c8a6349262b3cb0a614773683884f451537c955fd11217",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.10.md",
+      "line": 778,
+      "rule": "authorization-bearer",
+      "digest": "162e66c18714e65c02c8a6349262b3cb0a614773683884f451537c955fd11217",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.11.md",
+      "line": 587,
+      "rule": "authorization-bearer",
+      "digest": "bd345cdffe504f9376c7a9a96fe1e38e1f8a72712d47dda4c250d0ea857349ca",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.11.md",
+      "line": 778,
+      "rule": "authorization-bearer",
+      "digest": "bd345cdffe504f9376c7a9a96fe1e38e1f8a72712d47dda4c250d0ea857349ca",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.12.md",
+      "line": 587,
+      "rule": "authorization-bearer",
+      "digest": "b0cb95d0a41f672922c91858a1e637ebb0f24ab4c8dd91a2ce59c2f2e1df691a",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.12.md",
+      "line": 778,
+      "rule": "authorization-bearer",
+      "digest": "b0cb95d0a41f672922c91858a1e637ebb0f24ab4c8dd91a2ce59c2f2e1df691a",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.13.md",
+      "line": 587,
+      "rule": "authorization-bearer",
+      "digest": "db4507dade13c2d095dc61853d06ecb4dcda6a43d69193d46f78e5f8fe88d03d",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.13.md",
+      "line": 778,
+      "rule": "authorization-bearer",
+      "digest": "db4507dade13c2d095dc61853d06ecb4dcda6a43d69193d46f78e5f8fe88d03d",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.14.md",
+      "line": 587,
+      "rule": "authorization-bearer",
+      "digest": "8e2bac5ffc2ce59530d3c088058bf745dd4f83f1576baca747bfb2bbe408c772",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.14.md",
+      "line": 778,
+      "rule": "authorization-bearer",
+      "digest": "8e2bac5ffc2ce59530d3c088058bf745dd4f83f1576baca747bfb2bbe408c772",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.2.md",
+      "line": 514,
+      "rule": "authorization-bearer",
+      "digest": "1573f9c45fc91bb2633c786cdc55644d168163f4b4d7bd9e36bc6d0d04778b34",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.2.md",
+      "line": 690,
+      "rule": "authorization-bearer",
+      "digest": "1573f9c45fc91bb2633c786cdc55644d168163f4b4d7bd9e36bc6d0d04778b34",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.3.md",
+      "line": 584,
+      "rule": "authorization-bearer",
+      "digest": "d66d7cdf33d6f7b1328de78f4f391607b2127f71f1df36bb6d8d8309f6649bf2",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.3.md",
+      "line": 772,
+      "rule": "authorization-bearer",
+      "digest": "d66d7cdf33d6f7b1328de78f4f391607b2127f71f1df36bb6d8d8309f6649bf2",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.4.md",
+      "line": 584,
+      "rule": "authorization-bearer",
+      "digest": "4a2f81e7fc5c4cf72cf03bc7efb3dded302e53844d9b9e3f198c0f197285700b",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.4.md",
+      "line": 775,
+      "rule": "authorization-bearer",
+      "digest": "4a2f81e7fc5c4cf72cf03bc7efb3dded302e53844d9b9e3f198c0f197285700b",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.5.md",
+      "line": 586,
+      "rule": "authorization-bearer",
+      "digest": "51e636168c32ebe233048e3d80b1c8340e0967036efa5d02e34ff9c3c3e87836",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.5.md",
+      "line": 777,
+      "rule": "authorization-bearer",
+      "digest": "51e636168c32ebe233048e3d80b1c8340e0967036efa5d02e34ff9c3c3e87836",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.6.md",
+      "line": 586,
+      "rule": "authorization-bearer",
+      "digest": "dd79de5258b76a2ee25f46d9874eeb740b88a0be37305547986cb80a87acffc5",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.6.md",
+      "line": 777,
+      "rule": "authorization-bearer",
+      "digest": "dd79de5258b76a2ee25f46d9874eeb740b88a0be37305547986cb80a87acffc5",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.7.md",
+      "line": 586,
+      "rule": "authorization-bearer",
+      "digest": "4ca18baeac6dbc059ae0c2332119813e02d65f5bc5959f4828b0cbeb09cfd6bf",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.7.md",
+      "line": 777,
+      "rule": "authorization-bearer",
+      "digest": "4ca18baeac6dbc059ae0c2332119813e02d65f5bc5959f4828b0cbeb09cfd6bf",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.8.md",
+      "line": 587,
+      "rule": "authorization-bearer",
+      "digest": "0feaf5ca3d3d1e8453f55a453ed1a736ea188d8ebbe251e84b3316d83c8e2180",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.8.md",
+      "line": 778,
+      "rule": "authorization-bearer",
+      "digest": "0feaf5ca3d3d1e8453f55a453ed1a736ea188d8ebbe251e84b3316d83c8e2180",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.9.md",
+      "line": 587,
+      "rule": "authorization-bearer",
+      "digest": "9c6d120b4dddc2c4154aac707bedfe8cb65cccc00d4fc67c8031948fdadb4faa",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/00_Framework_HLD_v2.9.md",
+      "line": 778,
+      "rule": "authorization-bearer",
+      "digest": "9c6d120b4dddc2c4154aac707bedfe8cb65cccc00d4fc67c8031948fdadb4faa",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.10.md",
+      "line": 32,
+      "rule": "authorization-bearer",
+      "digest": "42f590db6f2e70d141bddfaf25257a6ec08b3f908ff9ee79b4382c93a960bba2",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.11.md",
+      "line": 32,
+      "rule": "authorization-bearer",
+      "digest": "873d88691bc21237f2480e13ea47ba565a8c5c4c1dbf41ebb019f6cbd8a5df9b",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.12.md",
+      "line": 32,
+      "rule": "authorization-bearer",
+      "digest": "cb87e8d2964bbcf9c746afa6865043f8fd6925384d90b7b628728e4e69b08856",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.13.md",
+      "line": 32,
+      "rule": "authorization-bearer",
+      "digest": "f3ad51b4b49266e2c8964b8478b9d9ceabbae9f762e46272d9d3c066dd28c85a",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.14.md",
+      "line": 32,
+      "rule": "authorization-bearer",
+      "digest": "802875848f543ee3e3e3e90e9aa4ecf1f04cc13c53201c1d136ee9bdd73ce2c2",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.15.md",
+      "line": 32,
+      "rule": "authorization-bearer",
+      "digest": "46e1ae77f5dc64bd80da65127c26c89b9b7d9d48f5f385e6555ac354e9e00442",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.16.md",
+      "line": 32,
+      "rule": "authorization-bearer",
+      "digest": "00747399a6df2e8ddf4d6ca846f3dfe9e6cb1f326a6d35982909d7479b75f78a",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.17.md",
+      "line": 32,
+      "rule": "authorization-bearer",
+      "digest": "a33a7b0a43fa8bea597b326d4feb9c0d15757cf3c99d8cfbdc825ac28c5de06d",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.18.md",
+      "line": 32,
+      "rule": "authorization-bearer",
+      "digest": "871d68e8073f60b5b7cad8a349da85f1f034e63e86c24d20e300ec08766f676c",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.19.md",
+      "line": 32,
+      "rule": "authorization-bearer",
+      "digest": "dc852798fb41ae1b52e282e0556dd95b4bce3a238440d04a0bb8c19d9766a82b",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.2.md",
+      "line": 30,
+      "rule": "authorization-bearer",
+      "digest": "291c34296590b1dad944f42cdc75dd16e021d66d489ee7c62bc8365b41a83a2f",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.20.md",
+      "line": 32,
+      "rule": "authorization-bearer",
+      "digest": "ac272a796149041349de6462ac036d3d162bf49e90a5f390b535f912b9d80da0",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.21.md",
+      "line": 32,
+      "rule": "authorization-bearer",
+      "digest": "5214b19f34a0655579c0d190d44b7f74353c09542e2a0ade0a8c61eb23ddc658",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.22.md",
+      "line": 32,
+      "rule": "authorization-bearer",
+      "digest": "972724f237d20879bc3d9e50b1a04c8c524745d09780c995fb7f2a5a0d1b414d",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.23.md",
+      "line": 32,
+      "rule": "authorization-bearer",
+      "digest": "9764feb15416b4752785d334e46de39bbe37502dd2a2199310f16e47597e0b78",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.24.md",
+      "line": 32,
+      "rule": "authorization-bearer",
+      "digest": "fc2484fc4761dcf8d901cc1bc144b2a47651420809b0b58b93b461cb08830932",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.3.md",
+      "line": 31,
+      "rule": "authorization-bearer",
+      "digest": "e5eeca05096e77c719a33a864863c58c168f8f85805c5fb197fa0b095a15808d",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.4.md",
+      "line": 31,
+      "rule": "authorization-bearer",
+      "digest": "a95e0d9f6f47886120dc9f5b01a7c7291f1ccbd000f6fd694bb0984d9b04c3bb",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.5.md",
+      "line": 31,
+      "rule": "authorization-bearer",
+      "digest": "8e9d44f2789b4c87ba26df92249c9e48f744dd1a572de9522b2bc69bfa553b2b",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.6.md",
+      "line": 32,
+      "rule": "authorization-bearer",
+      "digest": "9c546c51b1b94b049997f21cf8343299694062dbbdb84d24ae81764830bf1f22",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.7.md",
+      "line": 32,
+      "rule": "authorization-bearer",
+      "digest": "d1dc31bc4d8bf81e18c05a7f0526a7031974aed5746b2eda31626f79fb4e6ccf",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.8.md",
+      "line": 32,
+      "rule": "authorization-bearer",
+      "digest": "d5f6c5911db5c1a1eae67e2c0a6d24e84c37f87374cb1fa3703b929aa8ee13ef",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/01_Contract_Spec_v0.9.md",
+      "line": 32,
+      "rule": "authorization-bearer",
+      "digest": "f5dedd66d3fb5e839cf5b2a0ae82eb8bb36d695dc80ef22c12e51e21958c70d9",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/review/01_v0.4_review_{kimi,claudecode,codex}.md",
+      "line": 67,
+      "rule": "authorization-bearer",
+      "digest": "0d6e3bd6bd092111821e7c75a4a7e37eec142db6472b4851f34ea878b53d4093",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/review/01_v0.6_review_{kimi,claudecode,codex}.md",
+      "line": 73,
+      "rule": "authorization-bearer",
+      "digest": "093f0c91236d93039f942704c92876e8f3b44657c66169a81211525d86af6b2a",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/review/01_v0.7_review_{kimi,claudecode,codex}.md",
+      "line": 11,
+      "rule": "authorization-bearer",
+      "digest": "eae96329272f391cb5d34b51412445d0a64db28a4319b6ef665b1fee399cfb4b",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/review/01_v0.7_review_{kimi,claudecode,codex}.md",
+      "line": 114,
+      "rule": "authorization-bearer",
+      "digest": "eae96329272f391cb5d34b51412445d0a64db28a4319b6ef665b1fee399cfb4b",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/review/HLD_v0.1_review_{claudecode,kimi,codex}.md",
+      "line": 141,
+      "rule": "authorization-bearer",
+      "digest": "f827ac5a14aae2bd944eaa858cc085e154f32d7e26246768b964e2fa1eb086df",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/review/HLD_v2.0_01_v0.11_review_claudecode.md",
+      "line": 312,
+      "rule": "authorization-bearer",
+      "digest": "dcb248938db11727b559e80f55107ff647ea4d3b52fe4fdf380c598f076509f4",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/review/HLD_v2.0_01_v0.11_review_claudecode.md",
+      "line": 440,
+      "rule": "authorization-bearer",
+      "digest": "dcb248938db11727b559e80f55107ff647ea4d3b52fe4fdf380c598f076509f4",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/review/HLD_v2.0_01_v0.11_review_claudecode.md",
+      "line": 448,
+      "rule": "authorization-bearer",
+      "digest": "dcb248938db11727b559e80f55107ff647ea4d3b52fe4fdf380c598f076509f4",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/review/HLD_v2.0_01_v0.11_review_claudecode.md",
+      "line": 449,
+      "rule": "authorization-bearer",
+      "digest": "dcb248938db11727b559e80f55107ff647ea4d3b52fe4fdf380c598f076509f4",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/review/HLD_v2.0_01_v0.11_review_claudecode.md",
+      "line": 764,
+      "rule": "authorization-bearer",
+      "digest": "dcb248938db11727b559e80f55107ff647ea4d3b52fe4fdf380c598f076509f4",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/review/HLD_v2.0_01_v0.11_review_kimi.md",
+      "line": 27,
+      "rule": "authorization-bearer",
+      "digest": "c15872b2905f46ef76deff59ef9c95d5705dbd336a6e711a426c6e93e730296f",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/review/HLD_v2.2_01_v0.12_review_claudecode.md",
+      "line": 704,
+      "rule": "authorization-bearer",
+      "digest": "6887ec1c01d725b3eefd606510878fae773ebfc23956d630a6fd8c2a3371e59f",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/review/HLD_v2.2_01_v0.12_review_codex.md",
+      "line": 698,
+      "rule": "authorization-bearer",
+      "digest": "5318b45438bba4453ca3f7938e8d73f696d1441f0dea2fa73aa904a92534020f",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/review/HLD_v2.2_01_v0.12_review_codex.md",
+      "line": 706,
+      "rule": "authorization-bearer",
+      "digest": "5318b45438bba4453ca3f7938e8d73f696d1441f0dea2fa73aa904a92534020f",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/review/HLD_v2.2_01_v0.12_review_codex.md",
+      "line": 707,
+      "rule": "authorization-bearer",
+      "digest": "5318b45438bba4453ca3f7938e8d73f696d1441f0dea2fa73aa904a92534020f",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/review/HLD_v2.2_01_v0.12_review_kimi.md",
+      "line": 97,
+      "rule": "authorization-bearer",
+      "digest": "5894b4f7911f88c0ed448fbbf983aa355a6808b6745092250ac8580740a6e9bc",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
+    },
+    {
+      "path": "docs/review/M0a_08v1_mapping_gate_review_codex.md",
+      "line": 165,
+      "rule": "authorization-bearer",
+      "digest": "b0dc86a896bac7023cba3134f51de103184980a8b0ab37dd4ffef9cd3b8f83bb",
+      "reason": "task-004 人工逐行核对：设计或评审文本中的认证机制、主体或头部术语及说明性运算符，非凭据载荷；不改变冻结文档，仅批准该文件摘要与该行。"
     }
   ]
 }

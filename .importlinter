@@ -8,23 +8,13 @@ include_external_packages = True
 name = Only engine imports LangGraph
 type = forbidden
 source_modules =
-    codingsystem.orchestration
-    codingsystem.sdk
-    codingsystem.contracts
-    codingsystem.llm
-    codingsystem.knowledge
-    codingsystem.context
-    codingsystem.evidence
-    codingsystem.ledger
-    codingsystem.resources
-    codingsystem.boards
-    codingsystem.stores
-    codingsystem.gateway
-    codingsystem.approval
-    codingsystem.release
-    codingsystem.entry
+    codingsystem
     codingsystem_agent_skeletons
 forbidden_modules = langgraph
+ignore_imports =
+    codingsystem.engine -> langgraph
+    codingsystem.engine.** -> langgraph
+unmatched_ignore_imports_alerting = none
 allow_indirect_imports = True
 
 [importlinter:contract:framework]
@@ -80,11 +70,3 @@ source_modules =
 forbidden_modules =
     codingsystem.approval
     codingsystem.release
-
-[importlinter:contract:root-engine]
-name = Framework root does not import LangGraph
-type = forbidden
-source_modules = codingsystem
-forbidden_modules = langgraph
-as_packages = False
-allow_indirect_imports = True

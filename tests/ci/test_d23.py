@@ -1,5 +1,6 @@
 """Exercise D23 repository cases, constructing negative material only at runtime."""
 
+from itertools import product
 from pathlib import Path
 
 import pytest
@@ -116,7 +117,9 @@ def test_unregistered_language_and_no_whole_python_exemption(tmp_path: Path) -> 
     path = tmp_path / "sample.py"
     path.write_text("x = " + repr(marker() + " echo 1;"))
     assert check_file(path, pure_data_digest=digest(path.read_bytes()))
-    assert not check_file(path, scanner_digest=digest(path.read_bytes()))
+    assert "unapproved_python_fragment" in check_file(
+        path, scanner_digest=digest(path.read_bytes())
+    )
     path.write_text("x = " + repr(marker()))
     path.chmod(0o755)
     assert not check_file(path)
@@ -127,3 +130,56 @@ def test_unregistered_language_and_no_whole_python_exemption(tmp_path: Path) -> 
 def test_package_families(name: str) -> None:
     assert php_package(name)
     assert not php_package("graph" + name)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("bits", list(product((False, True), repeat=3)))
+@pytest.mark.parametrize(
+    "form", ["plain", "renamed", "constant", "bytes", "adjacent", "fstring", "comment"]
+)
+@pytest.mark.parametrize("program", [False, True])
+def test_all_case_forms(bits: tuple[bool, ...], form: str, program: bool, tmp_path: Path) -> None:
+    base = marker()
+    value = base[:2] + "".join(
+        c.upper() if upper else c for c, upper in zip(base[2:], bits, strict=True)
+    )
+    if program:
+        value += " echo 1;"
+    forms = {
+        "plain": value,
+        "renamed": value,
+        "constant": "x = " + repr(value),
+        "bytes": "x = " + repr(value.encode()),
+        "adjacent": "x = " + repr(value[:3]) + " " + repr(value[3:]),
+        "fstring": "x = f" + repr(value),
+        "comment": "# " + value,
+    }
+    path = tmp_path / ("sample.txt" if form == "plain" else "sample.py")
+    path.write_text(forms[form])
+    allowed = not any(bits) and not program and form in {"constant", "bytes", "adjacent", "comment"}
+    assert bool(check_file(path)) is not allowed
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("encoding", ["hz", "iso2022_jp"])
+def test_stateful_encodings(encoding: str, tmp_path: Path) -> None:
+    envelope = (b"~{", b"A~}") if encoding == "hz" else (b"\x1b$B", b"A\x1b(B")
+    data = (
+        f"# coding: {encoding}\nx = '".encode()
+        + envelope[0]
+        + marker().encode()
+        + envelope[1]
+        + b"'\n"
+    )
+    path = tmp_path / "encoded.py"
+    path.write_bytes(data)
+    assert "unapproved_python_fragment" in check_file(path)
+
+
+@pytest.mark.unit
+def test_bom_signature_and_raw_offsets(tmp_path: Path) -> None:
+    path = tmp_path / "bom.py"
+    path.write_bytes(b"\xef\xbb\xbf" + ("é = " + repr(marker()) + "\n# " + marker()).encode())
+    assert not check_file(path)
+    path.write_bytes(path.read_bytes() + ("\nx = " + repr(marker().upper())).encode())
+    assert check_file(path)

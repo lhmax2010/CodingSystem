@@ -81,6 +81,8 @@ def test_history(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[
 @pytest.mark.unit
 def test_d23_inventory(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "prefix", str(tmp_path))
+    Path("pyvenv.cfg").write_text("home = /usr/bin\n")
     path = Path("safe.py")
     path.write_text('"""Safe."""')
     Path("uv.lock").write_text('[[package]]\nname="safe"\n')
@@ -145,3 +147,46 @@ def test_real_content_signals() -> None:
     }
     for rule, value in values.items():
         assert checks.content_hits(value.encode(), {rule: rules[rule]}), rule
+
+
+@pytest.mark.unit
+def test_expanded_content_signals() -> None:
+    rules = checks.json_file("ci/content_policy.json")["rules"]
+    samples = {
+        "private-key": [
+            "-----BEGIN " + x + " PRIVATE KEY" + tail + "-----"
+            for x, tail in [("ENCRYPTED", ""), ("PGP", " BLOCK")]
+        ],
+        "token": [
+            prefix + "a" * 40
+            for prefix in [
+                "sk-" + "proj-",
+                "sk-" + "ant-api03-",
+                "xox" + "b-",
+                "gl" + "pat-",
+                "AI" + "za",
+            ]
+        ],
+        "credential-assignment": [
+            key + " = " + quote + value + quote
+            for key in ["pass" + "word", "client_" + "secret"]
+            for quote in ["", '"', "'"]
+            for value in [
+                "a" * 8,
+                "example" + "12345",
+                "placeholder" + "123",
+                "redacted" + "@!#abc",
+                "a" * 12,
+            ]
+        ],
+        "authorization-bearer": ["Authorization: " + "Bear" + "er " + "a" * 12],
+        "private-ipv4": ["10." + "2.3.4."],
+        "perforce-path": [
+            "/" + "/" + name + "/product/file" for name in ["SHARED", "Depot", "Other"]
+        ],
+    }
+    for rule, values in samples.items():
+        for value in values:
+            assert checks.content_hits(value.encode(), {rule: rules[rule]}), rule
+    for value in ["10." + "1.2.3.4", "https://example.com/product/file"]:
+        assert not checks.content_hits(value.encode(), rules)

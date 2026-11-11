@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import codecs
 import hashlib
 import io
 import re
@@ -11,7 +12,8 @@ from pathlib import Path
 
 MARKER = "<?php"
 SIGNALS = (MARKER, "composer.lock", "composer.json", ".phar")
-POLICY_VERSION = "task-001-d23-v1"
+POLICY_VERSION = "task-004-d23-v2"
+MARKER_RE = re.compile(re.escape(MARKER.encode()), re.IGNORECASE)
 
 
 def digest(data: bytes) -> str:
@@ -28,6 +30,8 @@ def python_fragments(data: bytes) -> bool:
     """Approve only registered constant values or normalized tokenizer comments."""
     try:
         encoding, _ = tokenize.detect_encoding(io.BytesIO(data).readline)
+        if codecs.lookup(encoding).name not in {"utf-8", "utf-8-sig"}:
+            return False
         source = data.decode(encoding)
         tree = ast.parse(source)
         tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
@@ -37,7 +41,7 @@ def python_fragments(data: bytes) -> bool:
     offsets = [0]
     for line in lines:
         offsets.append(offsets[-1] + len(line.encode("utf-8")))
-    raw = source.encode("utf-8")
+    raw = data.removeprefix(codecs.BOM_UTF8)
     approved: list[tuple[int, int]] = []
     interpolated = {
         id(child)
@@ -49,7 +53,7 @@ def python_fragments(data: bytes) -> bool:
         if not isinstance(node, ast.Constant) or not isinstance(node.value, (str, bytes)):
             continue
         value = node.value.decode("latin-1") if isinstance(node.value, bytes) else node.value
-        if MARKER not in value:
+        if MARKER.lower() not in value.lower():
             continue
         if id(node) in interpolated or value not in SIGNALS:
             return False
@@ -62,7 +66,7 @@ def python_fragments(data: bytes) -> bool:
             )
         )
     for token in tokens:
-        if token.type != tokenize.COMMENT or MARKER not in token.string:
+        if token.type != tokenize.COMMENT or MARKER.lower() not in token.string.lower():
             continue
         if token.string.removeprefix("#").strip() not in SIGNALS:
             return False
@@ -71,7 +75,7 @@ def python_fragments(data: bytes) -> bool:
         approved.append((start, start + len(token.string.encode("utf-8"))))
     return all(
         any(start <= match.start() and match.end() <= end for start, end in approved)
-        for match in re.finditer(re.escape(MARKER.encode()), raw)
+        for match in MARKER_RE.finditer(raw)
     )
 
 
@@ -109,7 +113,7 @@ def check_file(
         digest(data) != pure_data_digest or path.stat().st_mode & 0o111
     ):
         reasons.append("data_classification_invalid")
-    marker_present = MARKER.encode() in data
+    marker_present = MARKER_RE.search(data) is not None
     if path.suffix == ".py":
         # Parsing is also necessary for escaped or implicitly concatenated constants.
         fragments_ok = python_fragments(data)
@@ -124,9 +128,7 @@ def check_file(
         )
         if not allowed:
             reasons.append("unclassified_text_signal")
-    # A reviewed scanner source can exempt text, but never names, shebang or metadata.
-    if scanner_digest == digest(data):
-        reasons = [reason for reason in reasons if reason != "unapproved_python_fragment"]
+    # Python sources always require fragment classification, including scanner sources.
     return reasons
 
 
@@ -141,6 +143,6 @@ def decoded_marker(data: bytes) -> bool:
             value = node.value
             if isinstance(value, bytes):
                 value = value.decode("latin-1")
-            if isinstance(value, str) and MARKER in value:
+            if isinstance(value, str) and MARKER.lower() in value.lower():
                 return True
     return False

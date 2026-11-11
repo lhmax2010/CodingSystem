@@ -1,8 +1,8 @@
 {
-  "version": "task-001-d23-v1",
+  "version": "task-004-d23-v2",
   "reason": "仅扫描器源码与固定签名/分类表的文本信号；摘要变化必须随策略复核。",
   "files": {
-    "ci/d23.py": "4b666ccb9d5babf40bd23ef9ebd2203904f871096a5225111c786a274c247798",
-    "ci/d23_policy.json": "4f3b5462186c03b02add90689eb5c65e8c153f544a22032627b86bf5ee848f65"
+    "ci/d23.py": "4f3b49ab05ec750ae2a98706ae5a7bd8f7c88ad7ec26c5310f00ba1ac60cac7a",
+    "ci/d23_policy.json": "4777a569e9af9d3b6eafe40cbf60c403076c1c7abca081d8fa1c07f2367e35ee"
   }
 }

@@ -1,0 +1,32 @@
+{
+  "version": "task-004-bypass-v1",
+  "entries": [
+    {
+      "path": ".importlinter",
+      "line": 14,
+      "rule": "importlinter:contract:engine.ignore_imports",
+      "line_digest": "79ef623a5b8c6c78ceeda9bb3aeeaea7cc962207e01a3b90cf436d2a014f0986",
+      "task": "task-004",
+      "reason": "C10 明确授权：唯一 engine 实现可导入 LangGraph，其余框架与所有 Agent 默认封闭。",
+      "remove_when": "对应明确授权规则取消或实现改变时重新审读；内容摘要变化立即失效。"
+    },
+    {
+      "path": ".importlinter",
+      "line": 31,
+      "rule": "importlinter:contract:agent.ignore_imports",
+      "line_digest": "90437ecf061e23d2f1dfba6346984728105e7bfa4e4785f3506125f697cfdf16",
+      "task": "task-004",
+      "reason": "08 §3.2 既定公开面：Agent 仅可导入 SDK/contracts；C10 要求保留并校验包列表完整性。",
+      "remove_when": "对应明确授权规则取消或实现改变时重新审读；内容摘要变化立即失效。"
+    },
+    {
+      "path": "conftest.py",
+      "line": 21,
+      "rule": "pytest-outcome",
+      "line_digest": "e8cff5450f6eaa42dd1409af35eebcb7a5b6ddacb0000dadb43a23b5cc84c6f3",
+      "task": "task-004",
+      "reason": "C5 与 08 §6.2 明确授权：仅未开启内网环境时为 intranet 标记的用例添加跳过；普通 skip/xfail 仍失败。",
+      "remove_when": "对应明确授权规则取消或实现改变时重新审读；内容摘要变化立即失效。"
+    }
+  ]
+}
