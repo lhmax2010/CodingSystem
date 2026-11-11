@@ -1,0 +1,212 @@
+task-001 evidence
+
+Opening facts from executed preflight:
+$ git pull --rebase
+Already up to date.
+$ git rev-parse HEAD
+f5fcc6329c04da3d7bd324a06da724267df1c564
+$ git status --porcelain
+(no output)
+$ python3 --version
+Python 3.12.3
+$ uv --version
+uv 0.11.13
+
+Current read-only evidence (commands below inherit nice=19 / ionice=idle):
+Recorded UTC: 2026-11-11T12:03:02.591312+00:00
+
+$ git branch --show-current
+main
+[exit=0]
+
+$ git rev-parse HEAD
+f5fcc6329c04da3d7bd324a06da724267df1c564
+[exit=0]
+
+$ git merge-base --is-ancestor f5fcc63 HEAD
+[exit=0]
+
+$ sha256sum docs/08_Codex_Dev_Guide_v1.md
+22b49316f132339c9676b36a5658aed1549b08be8edff394bd525119c8a4b1e3  docs/08_Codex_Dev_Guide_v1.md
+[exit=0]
+
+$ ls -l /home/linhao/Downloads/08_Codex_Dev_Guide_v1.md
+ls: cannot access '/home/linhao/Downloads/08_Codex_Dev_Guide_v1.md': No such file or directory
+[exit=2]
+
+$ python3 --version
+Python 3.12.3
+[exit=0]
+
+$ .venv/bin/python --version
+Python 3.13.13
+[exit=0]
+
+$ uv --version
+uv 0.11.13 (x86_64-unknown-linux-gnu)
+[exit=0]
+
+$ nproc
+20
+[exit=0]
+
+$ free -m
+               total        used        free      shared  buff/cache   available
+Mem:           31540       26368         995        1208        5842        5171
+Swap:           4095        4095           0
+[exit=0]
+
+$ cat /proc/loadavg
+2.97 1.82 1.53 2/2986 2005950
+[exit=0]
+
+$ git status --short
+ M .gitignore
+D  framework/artifacts/.gitkeep
+D  framework/skill/.gitkeep
+?? .importlinter
+?? agents/benchmark/
+?? agents/optimizer/
+?? agents/skeletons/pyproject.toml
+?? agents/skeletons/src/
+?? agents/skeletons/tests/
+?? ci/__init__.py
+?? ci/checks.py
+?? ci/content_exemptions.json
+?? ci/content_policy.json
+?? ci/coverage_check.py
+?? ci/d23.py
+?? ci/d23_policy.json
+?? ci/d23_scanner_digests.json
+?? ci/gate.sh
+?? conformance/__init__.py
+?? deploy/
+?? docs/08_Codex_Dev_Guide_v1.md
+?? docs/dev/
+?? framework/__init__.py
+?? framework/approval/
+?? framework/boards/
+?? framework/context/__init__.py
+?? framework/contracts/__init__.py
+?? framework/engine/__init__.py
+?? framework/entry/
+?? framework/evidence/__init__.py
+?? framework/gateway/
+?? framework/knowledge/__init__.py
+?? framework/ledger/
+?? framework/llm/__init__.py
+?? framework/orchestration/__init__.py
+?? framework/release/
+?? framework/resources/__init__.py
+?? framework/sdk/__init__.py
+?? framework/stores/
+?? pyproject.toml
+?? suites/
+?? tests/
+?? uv.lock
+[exit=0]
+
+Owner decision 2026-11-11: original 6144 MiB preflight replaced by 4096 MiB; cgroup limits unchanged. Previous wait exited 75 after 30 minutes.
+
+$ sha256sum docs/08_Codex_Dev_Guide_v1.md
+181b81c236ab173c90a087219af4f55989e034c0906c896080a50ddb75886ba1  docs/08_Codex_Dev_Guide_v1.md
+[exit=0]
+
+$ git diff --name-only -- docs
+[exit=0]
+
+$ git diff --check
+[exit=0]
+
+$ git status --short
+ M .gitignore
+D  framework/artifacts/.gitkeep
+D  framework/skill/.gitkeep
+?? .importlinter
+?? agents/benchmark/
+?? agents/optimizer/
+?? agents/skeletons/pyproject.toml
+?? agents/skeletons/src/
+?? agents/skeletons/tests/
+?? ci/__init__.py
+?? ci/checks.py
+?? ci/content_exemptions.json
+?? ci/content_policy.json
+?? ci/coverage_check.py
+?? ci/d23.py
+?? ci/d23_policy.json
+?? ci/d23_scanner_digests.json
+?? ci/gate.sh
+?? conformance/__init__.py
+?? deploy/
+?? docs/08_Codex_Dev_Guide_v1.md
+?? docs/dev/
+?? framework/__init__.py
+?? framework/approval/
+?? framework/boards/
+?? framework/context/__init__.py
+?? framework/contracts/__init__.py
+?? framework/engine/__init__.py
+?? framework/entry/
+?? framework/evidence/__init__.py
+?? framework/gateway/
+?? framework/knowledge/__init__.py
+?? framework/ledger/
+?? framework/llm/__init__.py
+?? framework/orchestration/__init__.py
+?? framework/release/
+?? framework/resources/__init__.py
+?? framework/sdk/__init__.py
+?? framework/stores/
+?? pyproject.toml
+?? suites/
+?? tests/
+?? uv.lock
+[exit=0]
+
+$ .venv/bin/python -m ci.checks history (under L1)
+Historical commits: 108; unique blobs: 318; findings: 29
+Matched values omitted; each blob is attributed to its first visited commit/path.
+f5fcc6329c04da3d7bd324a06da724267df1c564 3020627d398bfaf57074498dbb9984b40edc6530 docs/01_Contract_Spec_v0.10.md:568 internal-host
+f5fcc6329c04da3d7bd324a06da724267df1c564 c628dfa97e45950d9151f3d76ace2838b4aa7caa docs/01_Contract_Spec_v0.11.md:587 internal-host
+f5fcc6329c04da3d7bd324a06da724267df1c564 cc1679d5d05e96e70a99625773b8d3a12e88081b docs/01_Contract_Spec_v0.12.md:607 internal-host
+f5fcc6329c04da3d7bd324a06da724267df1c564 7036846674121aff2fb23f2e24b6647f36277a18 docs/01_Contract_Spec_v0.13.md:626 internal-host
+f5fcc6329c04da3d7bd324a06da724267df1c564 b49df3abf0575b8d07b48ecde73725fc48d82788 docs/01_Contract_Spec_v0.14.md:630 internal-host
+f5fcc6329c04da3d7bd324a06da724267df1c564 c28f5a89d70102c686194754a1eeb76c6d823441 docs/01_Contract_Spec_v0.15.md:635 internal-host
+f5fcc6329c04da3d7bd324a06da724267df1c564 20afac32d24696e38cf431f8f8e270c6ad08539f docs/01_Contract_Spec_v0.16.md:640 internal-host
+f5fcc6329c04da3d7bd324a06da724267df1c564 7335c9c42b2255214c6dd9a493f9f01d93d02d94 docs/01_Contract_Spec_v0.17.md:643 internal-host
+f5fcc6329c04da3d7bd324a06da724267df1c564 66565b9d45f286f5048f4ee4b6d4074d8898d6cd docs/01_Contract_Spec_v0.18.md:654 internal-host
+f5fcc6329c04da3d7bd324a06da724267df1c564 27068854b26e044fd7777e2689528e3aa92c551f docs/01_Contract_Spec_v0.19.md:667 internal-host
+f5fcc6329c04da3d7bd324a06da724267df1c564 08be9dd4f80461d64f55e8cb46f5036f7832b5b4 docs/01_Contract_Spec_v0.20.md:686 internal-host
+f5fcc6329c04da3d7bd324a06da724267df1c564 ec5e322c59352748505b280c74c799769a71f872 docs/01_Contract_Spec_v0.21.md:690 internal-host
+f5fcc6329c04da3d7bd324a06da724267df1c564 a91177770927ea7f54e6349228c1d43e620a74bf docs/01_Contract_Spec_v0.22.md:693 internal-host
+f5fcc6329c04da3d7bd324a06da724267df1c564 de36d89c5e9c4e67176148cadd70c7b213edbf03 docs/01_Contract_Spec_v0.23.md:693 internal-host
+f5fcc6329c04da3d7bd324a06da724267df1c564 ad4eb00c0b8c6b7c626d3303ccfa95316f302aa1 docs/01_Contract_Spec_v0.24.md:694 internal-host
+f5fcc6329c04da3d7bd324a06da724267df1c564 87b473995e826b3c8aa1aa9a5ec20f7362b2b3b2 docs/01_Contract_Spec_v0.7.md:520 internal-host
+f5fcc6329c04da3d7bd324a06da724267df1c564 895886d94041f333247867a5775b369a7548a7e4 docs/01_Contract_Spec_v0.8.md:535 internal-host
+f5fcc6329c04da3d7bd324a06da724267df1c564 0381feac66e2e8cedb54cd63c84f2a2305f4018a docs/01_Contract_Spec_v0.9.md:566 internal-host
+f5fcc6329c04da3d7bd324a06da724267df1c564 326c4a33bd528108005d8b957b0dc09fec524696 docs/review/01_v0.7_review_{kimi,claudecode,codex}.md:65 internal-host
+aa25375b8710ad72e8e0a614774d285430dc53ea 26e286579bfeb6ef3f79c1fec8b883b6033a0344 docs/baseline/00_Agent_Team_Contract_v0.7.3.md:891 private-key
+aa25375b8710ad72e8e0a614774d285430dc53ea d06a10d0cfa144dd73f0870c0d754cac15895cca docs/baseline/08_Phase_1_5_Overview_v0.3.md:308 internal-host
+aa25375b8710ad72e8e0a614774d285430dc53ea 60d500118361ba926d2160d477fc423c20f08204 docs/dev_memory/phase_1a/sprint_0_spike/spike_reports_data/llm_adapter/README.md:223 internal-host
+aa25375b8710ad72e8e0a614774d285430dc53ea 60d500118361ba926d2160d477fc423c20f08204 docs/dev_memory/phase_1a/sprint_0_spike/spike_reports_data/llm_adapter/README.md:316 internal-host
+fbfd625dcfa0b009b160b3891b3c68e23c28529a 51f777bfa400acd1d0d1fe201b883532e2b06e30 docs/dev_memory/phase_1a/sprint_0_spike/spike_reports_data/llm_adapter/README.md:173 internal-host
+fbfd625dcfa0b009b160b3891b3c68e23c28529a 51f777bfa400acd1d0d1fe201b883532e2b06e30 docs/dev_memory/phase_1a/sprint_0_spike/spike_reports_data/llm_adapter/README.md:266 internal-host
+8d0f082c5840470b5502ca249145808e509bc6b1 db20b2e92f4b17085d82f9fc271eed06a0327428 docs/dev_memory/phase_1a/sprint_0_spike/spike_reports_data/llm_adapter/README.md:145 internal-host
+8d0f082c5840470b5502ca249145808e509bc6b1 db20b2e92f4b17085d82f9fc271eed06a0327428 docs/dev_memory/phase_1a/sprint_0_spike/spike_reports_data/llm_adapter/README.md:238 internal-host
+cd883c5919e03d1d1e2b87bb25bb29f97d5295d7 226cecccc9ef81dc0a8c5ca2078e2f73661c9309 docs/baseline/00_Agent_Team_Contract_v0.7.2.md:875 private-key
+e8ef16dd299e10cdb7c813b123b1de9487261095 1749015c7be7d53bdd73f1785a3395af6f858c6a docs/baseline/08_Phase_1_5_Overview_v0.3.md:308 internal-host
+
+$ .venv/bin/mypy --strict (under L1)
+Success: no issues found in 30 source files
+
+$ git log --format=%H %an <%ae> / %cn <%ce> %s -3
+4f6ce82ef55cf11c17aa5466735a2f89bcea782a Hao Lin <hao.lin@samsung.com> / Hao Lin <hao.lin@samsung.com> ci: enforce constrained gates and repository content policies
+bb3d654e5f4a81cb6ce791f1cda6fbeec0b0cb39 Hao Lin <hao.lin@samsung.com> / Hao Lin <hao.lin@samsung.com> framework: establish installable framework and Agent skeletons
+82c1cd56f21d956e76fd86f556939a04dd5e64db Hao Lin <hao.lin@samsung.com> / Hao Lin <hao.lin@samsung.com> docs: add development guide and approved resource threshold
+[exit=0]
+
+$ sha256sum uv.lock docs/08_Codex_Dev_Guide_v1.md
+3739076d1208bd5f6c291ff67856f75acd8590affe0ca6c98586512822496ad3  uv.lock
+181b81c236ab173c90a087219af4f55989e034c0906c896080a50ddb75886ba1  docs/08_Codex_Dev_Guide_v1.md
+[exit=0]
