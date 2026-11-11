@@ -1,0 +1,157 @@
+task-004 开场与开发期记录
+执行环境：开发机 / Codex；L0 nice -n 19 ionice -c3；单文件及脚本 L0.5（CPUQuota=100%、MemoryMax=2G、MemorySwapMax=0）；全仓工具 L1，flock 串行。未运行真实构建。
+开场 git status --short：空。
+git branch --show-current：main。
+git log -1 --oneline：25a5c2b docs: record task-003 validation and development status。
+git pull --rebase：Already up to date.
+
+开发期单文件 pytest，统一命令前缀：
+nice -n 19 ionice -c3 systemd-run --user --scope -p CPUQuota=100% -p MemoryMax=2G -p MemorySwapMax=0 nice -n 19 ionice -c3 .venv/bin/python -B -m pytest <文件> -q
+首次 test_d23.py：143 passed in 0.25s。
+首次 test_registrations.py：7 passed in 0.03s（随后补装饰器与独立配置反例，最终结果以正式门禁为准）。
+首次 test_gate_runtime.py：21 passed in 0.20s（随后补真实暂存删除场景）。
+首次 test_imports.py：7 passed in 1.83s（随后增强 engine 允许导入正例）。
+test_pre_push.py：4 passed in 0.51s。
+test_pytest_policy.py 开发调试：
+第一轮 4 failed, 4 passed in 4.44s；非 intranet skip / skipif / xfail / XPASS 返回码仍为 0。
+第二轮 4 failed, 4 passed in 4.83s；输出已显示失败，但进程返回码仍为 0。
+采用候选方案的显式 UsageError 后：8 passed in 4.32s。
+不是计时抖动重跑，不以这些调试通过替代完整门禁；未放宽规则。
+
+开发期静态检查修正：新增 Agent 哨兵与根测试同名导致 mypy 重复模块；改名为 test_agent_offline.py。AST 行号类型收窄、提交消息变量名复用已修正，无 ignore/noqa。
+最终开发期 L1 输出：All checks passed!；3 files reformatted, 38 files left unchanged；Success: no issues found in 41 source files。
+内容新规则专项首次返回 1，Current content findings: 91；91 条已逐行审读并登记，理由与定位见 REPORT.md，无真实敏感值写入报告。
+放宽项专项：Bypass registrations: 3; detected: 3，exit=0。
+
+正式 L1 第一次运行
+$ nice -n 19 ionice -c3 bash ci/gate.sh task-004
+实现 HEAD 8151478b42062be343e058238e8048a6f83d2b62；tree 3bc0a8e622c9c03d391936196bc6cccd1bb3066f。
+预检等到 available=10798 MiB、load=9.99、20 cores 才开跑；未放宽 4096 MiB / 10.0 门槛。
+第 1–5 项 PASS；第 6 项 FAIL：43 个 runtime_pyc_unlisted；退出码 1。
+原始完整输出：gate_report.attempt-001.txt（保留）；第 7–11 项未执行。
+
+按 C8 重装与重建（L1 scope，heavy_lock 覆盖预检至完成；环境 PYTHONDONTWRITEBYTECODE=1，UV_CONCURRENT_BUILDS=1，UV_CONCURRENT_DOWNLOADS=1）：
+首次重装预检 available=10653 MiB，load=9.45，cores=20，等待 30.018 秒。
+$ uv sync --reinstall --python /usr/bin/python3.12 --locked --no-install-workspace --no-python-downloads
+Resolved 27 packages in 90ms
+Prepared 24 packages in 406ms
+Uninstalled 26 packages in 797ms
+Installed 24 packages in 1.11s
+ ~ annotated-types==0.8.0
+ ~ ast-serialize==0.13.1
+ ~ click==8.5.1
+ - codingsystem-agent-skeletons==0.0.1 (from file:///home/linhao/Toolchain/development/CodingSystem/agents/skeletons)
+ - codingsystem-framework==0.0.1 (from file:///home/linhao/Toolchain/development/CodingSystem)
+ ~ coverage==7.17.2
+ ~ grimp==3.19
+ ~ hypothesis==6.170.15
+ ~ import-linter==2.0
+ ~ iniconfig==2.3.1
+ ~ librt==0.16.0
+ ~ mypy==2.4.1
+ ~ mypy-extensions==1.2.0
+ ~ packaging==26.3
+ ~ pathspec==1.1.1
+ ~ pluggy==1.7.0
+ ~ pydantic==2.14.3
+ ~ pydantic-core==2.50.4
+ ~ pytest==8.3.5
+ ~ pytest-cov==7.1.0
+ ~ pyyaml==6.0.3
+ ~ ruff==0.17.4
+ ~ setuptools==84.2.1
+ ~ sortedcontainers==2.4.0
+ ~ typing-extensions==4.16.0
+ ~ typing-inspection==0.4.5
+$ uv sync --python /usr/bin/python3.12 --locked --all-packages --no-build-isolation --no-python-downloads
+Resolved 27 packages in 1ms
+Installed 2 packages in 12ms
+ + codingsystem-agent-skeletons==0.0.1 (from file:///home/linhao/Toolchain/development/CodingSystem/agents/skeletons)
+ + codingsystem-framework==0.0.1 (from file:///home/linhao/Toolchain/development/CodingSystem)
+重装后 L0.5 检查：Remaining pyc after uv sync --reinstall: 4
+__editable___codingsystem_framework_0_0_1_finder、_virtualenv、mypy_extensions、typing_extensions 的旧字节码仍在。
+整体移出保留后重建；预检 available=12446 MiB，load=8.94，cores=20。
+$ mv .venv ../.CodingSystem-task004-venv-before-rebuild
+$ uv venv --python /usr/bin/python3.12 --no-python-downloads .venv
+Using CPython 3.12.3 interpreter at: /usr/bin/python3.12
+Creating virtual environment at: .venv
+Activate with: source .venv/bin/activate
+$ uv sync --reinstall --python /usr/bin/python3.12 --locked --no-install-workspace --no-python-downloads
+Resolved 27 packages in 6ms
+Prepared 24 packages in 8ms
+Installed 24 packages in 74ms
+ + annotated-types==0.8.0
+ + ast-serialize==0.13.1
+ + click==8.5.1
+ + coverage==7.17.2
+ + grimp==3.19
+ + hypothesis==6.170.15
+ + import-linter==2.0
+ + iniconfig==2.3.1
+ + librt==0.16.0
+ + mypy==2.4.1
+ + mypy-extensions==1.2.0
+ + packaging==26.3
+ + pathspec==1.1.1
+ + pluggy==1.7.0
+ + pydantic==2.14.3
+ + pydantic-core==2.50.4
+ + pytest==8.3.5
+ + pytest-cov==7.1.0
+ + pyyaml==6.0.3
+ + ruff==0.17.4
+ + setuptools==84.2.1
+ + sortedcontainers==2.4.0
+ + typing-extensions==4.16.0
+ + typing-inspection==0.4.5
+$ uv sync --python /usr/bin/python3.12 --locked --all-packages --no-build-isolation --no-python-downloads
+Resolved 27 packages in 1ms
+Installed 2 packages in 51ms
+ + codingsystem-agent-skeletons==0.0.1 (from file:///home/linhao/Toolchain/development/CodingSystem/agents/skeletons)
+ + codingsystem-framework==0.0.1 (from file:///home/linhao/Toolchain/development/CodingSystem)
+Rebuilt venv pyc count: 0
+
+正式 L1 第二次运行
+$ nice -n 19 ionice -c3 bash ci/gate.sh task-004
+PREFLIGHT {"at": 1794411997.6801019, "available": 11078, "cores": 20, "load": 8.95, "waited": 0.00748602207750082}
+Task: task-004
+HEAD: 8151478b42062be343e058238e8048a6f83d2b62
+Tree: 3bc0a8e622c9c03d391936196bc6cccd1bb3066f
+Time: 2026-11-11T15:46:38.149119+00:00
+Attempt: docs/dev/deliver/task-004/gate_report.attempt-002.txt
+Resources actual: cpu.max=200000 100000; memory.max=3221225472; memory.swap.max=0; nice=19; ionice=idle
+第 1–9 项 PASS；第 10、11 项 SKIP（不是 PASS）。214 passed, 2 skipped in 8.19s；Global line coverage: 87.18% >= 80%。
+D23 installed distributions: 26; failures: 0
+Current content findings: 0
+Bypass registrations: 3; detected: 3
+Provisional annotations: 0; keys: []
+ALL-END 2026-11-11T15:47:15.372902+00:00 status=ok rc=0
+最终采用 gate_report.attempt-002.txt；原始全部输出在该文件。gate_report.txt 排他新建，字节完全相同。
+sha256 gate_report.txt / attempt-002: c7ed938f5c22894f9219d132fa26c371e323801b07b6afe7f4d6d70359427a32
+
+两家评审逐条复测（开发机 / pytest 临时文件与临时 Git 仓库；无真实远端业务请求）：
+Codex C-01 + CC CI-01 / C1：全部大小写 × 七种载体的非精确签名、完整程序以及两种有状态编码已拒绝；精确签名及 UTF-8 BOM 正例已通过。tests/ci/test_d23.py。
+CC CI-02 / C7：登记源码摘要后添加非豁免片段已拒绝；无摘要登记的精确签名常量已通过。test_unregistered_language_and_no_whole_python_exemption。
+CC CI-03 / C8：RECORD 外字节码、改名信号文件及外部非解释器链接已拒绝；前缀内部 lib64 链接与系统解释器链接已通过。test_unowned_files_and_links；真实遗留字节码首轮已拒绝，重建后已通过。
+Codex C-02 + CC CI-05 / C2：短值、无引号、示例值前缀、头部凭据、令牌族、加密私钥、任意 depot、私网尾标点已拒绝；精确受审条目与非地址版本串已通过。test_expanded_content_signals / test_content_policy；不记录载荷。
+Codex C-03 / C4：检查进程失败、日志进程失败、尾记录写失败已拒绝；双进程与证据均正常已通过。test_logger_and_check_exit_codes / test_final_log_write_failure_no_success / test_execute_records_and_failures。
+Codex C-04 / C3：每一级路径链接、最终报告链接、硬链接、非普通文件、HEAD 存在但索引暂存删除已拒绝；安全普通路径已通过；未提交旧 attempt 保留、新 attempt 已通过。test_symlink_parent_never_touches_history / test_file_aliases_and_attempts / test_staged_delete_keeps_head_evidence。
+Codex C-05 + CC CI-08 / C5：tests 与 Agent 树未授权联网均已拒绝；默认 intranet 跳过计数已通过；显式内网开关执行哨兵已通过。test_both_trees_and_intranet_switch 与两个真实测试树。独立网络命名空间本机不可用，记录 off，未宣称子进程已网络隔离。
+Codex C-06 + CC CI-07 / C6：内部跳转参数、陈旧预检、负载超时、错误 nice / ionice / 限额、第二个锁持有者已拒绝；新鲜预检和资源恢复后开跑已通过。test_invalid_entry / test_preflight_recovery_timeout_and_freshness / test_effective_limits_validator / test_cross_worktree_shared_lock。
+CC CI-04 / C9：任务记录外的脏树在 scope 前已拒绝；仅本任务交付及 STATUS 修改已通过。test_dirty_before_scope_and_records_allowed。
+CC CI-06 / C10：框架根与非 engine 包越界导入、未列出的新增子包和 Agent 已拒绝；engine 显式规则与合约完整清单已通过。test_boundary_rejects_import / test_contract_lists_complete_and_detect_new_packages。
+CC G08-01 / E2：未登记、登记后改内容、配置放宽、非 intranet skip / skipif / xfail / XPASS / 收集跳过已拒绝；完整精确登记已通过。test_bypass_exact_approval / test_bypass_configuration / test_alternative_configuration_files / test_unmarked_skips_and_xfails_fail。
+CC G08-02 / E3：安装模板的临时仓库向本地裸仓库推送命中文件或命中提交信息均已拒绝；安全推送已通过；content-stdin 无豁免已拒绝命中输入。test_local_push_hook / test_content_stdin_has_no_exemptions。
+CC G08-03 / E4：跨 worktree 竞争已拒绝；L0.5 单文件测试与 L1 真实门禁限额已通过。
+CC G08-04 / E5：标注缺登记、登记无标注、映射无叶键或使用父键、重复位置、错行、文件读取失败已拒绝；三方精确一致已通过。test_provisional_exact_locations。
+Codex D-01 / E1：门禁 10/11 明确标记 SKIP；未来比较对象为 01 §0.3 契约包版本；此处未声称已通过。
+
+推送前手动模板检查（标准库，L0.5）：
+$ bash ci/hooks/pre-push origin
+stdin: refs/heads/main 8151478b42062be343e058238e8048a6f83d2b62 refs/heads/main 25a5c2b6990df587868b3a9af9e8647ea8531ec9
+Current content findings: 0
+Pre-push commits checked: 1; result=pass
+exit=0
+最终交付提交信息在提交前另经 content-stdin 检查：
+exit=0
+提交后还将对实际全部待推送提交重新手动运行模板；本节是写入交付前对实现提交、最终工作树内容与预定交付提交信息的检查原始结果。

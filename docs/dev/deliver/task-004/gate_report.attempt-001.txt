@@ -1,0 +1,180 @@
+PREFLIGHT {"at": 1794411846.0861397, "available": 10798, "cores": 20, "load": 9.99, "waited": 600.2592769979965}
+Task: task-004
+HEAD: 8151478b42062be343e058238e8048a6f83d2b62
+Tree: 3bc0a8e622c9c03d391936196bc6cccd1bb3066f
+Time: 2026-11-11T15:44:06.539138+00:00
+Attempt: docs/dev/deliver/task-004/gate_report.attempt-001.txt
+Resources actual: cpu.max=200000 100000; memory.max=3221225472; memory.swap.max=0; nice=19; ionice=idle
+
+GATE 1-lock START
+uv 0.11.13 (x86_64-unknown-linux-gnu)
+3739076d1208bd5f6c291ff67856f75acd8590affe0ca6c98586512822496ad3  uv.lock
+113f0bec67b252d8dfeea8027b4e4293f34931f8c17a943493b599caa347077a  pyproject.toml
+1ca8847679f704597792d598665c1aaf7e7d8a137650c6a361e22c2337ac08ad  .importlinter
+Resolved 27 packages in 60ms
+Resolved 27 packages in 1ms
+Uninstalled 2 packages in 111ms
+ - codingsystem-agent-skeletons==0.0.1 (from file:///home/linhao/Toolchain/development/CodingSystem/agents/skeletons)
+ - codingsystem-framework==0.0.1 (from file:///home/linhao/Toolchain/development/CodingSystem)
+Resolved 27 packages in 1ms
+Installed 1 package in 10ms
+   Building codingsystem-framework @ file:///home/linhao/Toolchain/development/CodingSystem
+      Built codingsystem-framework @ file:///home/linhao/Toolchain/development/CodingSystem
+Prepared 1 package without build isolation in 1.19s
+Installed 1 package in 0.59ms
+ + codingsystem-agent-skeletons==0.0.1 (from file:///home/linhao/Toolchain/development/CodingSystem/agents/skeletons)
+ + codingsystem-framework==0.0.1 (from file:///home/linhao/Toolchain/development/CodingSystem)
+Python 3.12.3
+GATE 1-lock PASS elapsed=3s
+
+GATE 2-ruff START
+All checks passed!
+41 files already formatted
+GATE 2-ruff PASS elapsed=1s
+
+GATE 3-mypy START
+Success: no issues found in 41 source files
+GATE 3-mypy PASS elapsed=2s
+
+GATE 4-import-linter START
+=============
+Import Linter
+=============
+
+---------
+Contracts
+---------
+
+Analyzed 18 files, 0 dependencies.
+----------------------------------
+
+Only engine imports LangGraph KEPT
+Framework does not import Agents KEPT
+Agents use only SDK and contracts KEPT
+Contracts do not depend on other framework subpackages KEPT
+Workers cannot reach approval or release KEPT
+
+Contracts: 5 kept, 0 broken.
+GATE 4-import-linter PASS elapsed=0s
+
+GATE 5-pytest-coverage START
+network-namespace: off
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.3.5, pluggy-1.7.0
+rootdir: /home/linhao/Toolchain/development/CodingSystem
+configfile: pyproject.toml
+testpaths: tests, agents/skeletons/tests
+plugins: hypothesis-6.170.15, cov-7.1.0
+collected 216 items
+
+tests/ci/test_checks.py ........                                         [  3%]
+tests/ci/test_coverage.py .                                              [  4%]
+tests/ci/test_d23.py ................................................... [ 27%]
+........................................................................ [ 61%]
+....................                                                     [ 70%]
+tests/ci/test_gate_entry.py .....                                        [ 72%]
+tests/ci/test_gate_runtime.py ......................                     [ 82%]
+tests/ci/test_imports.py .......                                         [ 86%]
+tests/ci/test_installed.py .                                             [ 86%]
+tests/ci/test_offline.py .s                                              [ 87%]
+tests/ci/test_pre_push.py ....                                           [ 89%]
+tests/ci/test_pytest_policy.py ........                                  [ 93%]
+tests/ci/test_registrations.py ............                              [ 98%]
+agents/skeletons/tests/test_agent_offline.py .s                          [ 99%]
+agents/skeletons/tests/test_installation.py .                            [100%]
+
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.3-final-0 ________________
+
+Name                                                            Stmts   Miss Branch BrPart  Cover   Missing
+-----------------------------------------------------------------------------------------------------------
+agents/skeletons/src/codingsystem_agent_skeletons/__init__.py       0      0      0      0   100%
+ci/__init__.py                                                      0      0      0      0   100%
+ci/checks.py                                                      115      7     56      2    94%   80-83, 151-152, 181
+ci/coverage_check.py                                               31      1     10      1    95%   46
+ci/d23.py                                                         101      1     56      1    99%   61
+ci/gate_runtime.py                                                182     33     46      6    81%   103-116, 152->151, 181, 189, 220-221, 262, 270-286, 290
+ci/installed.py                                                    23      0     10      0   100%
+ci/pre_push.py                                                     35     35     20      0     0%   3-45
+ci/registrations.py                                               145      4     88      9    94%   115->103, 117->139, 129->126, 165->162, 202, 206->205, 218, 221, 226
+framework/__init__.py                                               0      0      0      0   100%
+framework/approval/__init__.py                                      0      0      0      0   100%
+framework/boards/__init__.py                                        0      0      0      0   100%
+framework/context/__init__.py                                       0      0      0      0   100%
+framework/contracts/__init__.py                                     0      0      0      0   100%
+framework/engine/__init__.py                                        0      0      0      0   100%
+framework/entry/__init__.py                                         0      0      0      0   100%
+framework/evidence/__init__.py                                      0      0      0      0   100%
+framework/gateway/__init__.py                                       0      0      0      0   100%
+framework/knowledge/__init__.py                                     0      0      0      0   100%
+framework/ledger/__init__.py                                        0      0      0      0   100%
+framework/llm/__init__.py                                           0      0      0      0   100%
+framework/orchestration/__init__.py                                 0      0      0      0   100%
+framework/release/__init__.py                                       0      0      0      0   100%
+framework/resources/__init__.py                                     0      0      0      0   100%
+framework/sdk/__init__.py                                           0      0      0      0   100%
+framework/stores/__init__.py                                        0      0      0      0   100%
+-----------------------------------------------------------------------------------------------------------
+TOTAL                                                             632     81    286     19    86%
+Coverage JSON written to file .coverage.json
+Required test coverage of 80.0% reached. Total coverage: 86.27%
+=========================== short test summary info ============================
+SKIPPED [1] tests/ci/test_offline.py:16: intranet: disabled on development machine
+SKIPPED [1] agents/skeletons/tests/test_agent_offline.py:15: intranet: disabled on development machine
+======================== 214 passed, 2 skipped in 7.88s ========================
+Global line coverage: 87.18% >= 80%
+Critical framework/orchestration: N/A (no measured branches; threshold remains 95%)
+Critical framework/ledger: N/A (no measured branches; threshold remains 95%)
+Critical framework/approval: N/A (no measured branches; threshold remains 95%)
+Critical framework/release: N/A (no measured branches; threshold remains 95%)
+Critical framework/sdk/side_effect.py: N/A (no measured branches; threshold remains 95%)
+Critical framework/sdk/side_effect: N/A (no measured branches; threshold remains 95%)
+GATE 5-pytest-coverage PASS elapsed=10s
+
+GATE 6-d23 START
+D23_FAIL installed: lib/python3.12/site-packages/__pycache__/__editable___codingsystem_framework_0_0_1_finder.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/__pycache__/_virtualenv.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/__pycache__/mypy_extensions.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/__pycache__/typing_extensions.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/_distutils_hack/__pycache__/__init__.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/mypy/__pycache__/__main__.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/mypy/__pycache__/bogus_type.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/mypy/__pycache__/pyinfo.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/mypy/__pycache__/split_namespace.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/mypy/__pycache__/version.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/mypy/plugins/__pycache__/__init__.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/mypy/server/__pycache__/__init__.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/__pycache__/__init__.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/__pycache__/_meta.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/__pycache__/_typing.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/__pycache__/_version.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/__pycache__/backend.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/__pycache__/gitignore.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/__pycache__/pathspec.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/__pycache__/pattern.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/__pycache__/util.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/_backends/__pycache__/__init__.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/_backends/__pycache__/_utils.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/_backends/__pycache__/agg.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/_backends/hyperscan/__pycache__/__init__.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/_backends/hyperscan/__pycache__/_base.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/_backends/hyperscan/__pycache__/base.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/_backends/hyperscan/__pycache__/gitignore.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/_backends/hyperscan/__pycache__/pathspec.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/_backends/re2/__pycache__/__init__.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/_backends/re2/__pycache__/_base.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/_backends/re2/__pycache__/base.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/_backends/re2/__pycache__/gitignore.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/_backends/re2/__pycache__/pathspec.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/_backends/simple/__pycache__/__init__.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/_backends/simple/__pycache__/gitignore.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/_backends/simple/__pycache__/pathspec.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/patterns/__pycache__/__init__.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/patterns/__pycache__/gitwildmatch.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/patterns/gitignore/__pycache__/__init__.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/patterns/gitignore/__pycache__/base.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/patterns/gitignore/__pycache__/basic.cpython-312.pyc: runtime_pyc_unlisted
+D23_FAIL installed: lib/python3.12/site-packages/pathspec/patterns/gitignore/__pycache__/spec.cpython-312.pyc: runtime_pyc_unlisted
+D23 installed distributions: 26; failures: 43
+GATE 6-d23 FAIL elapsed=43s rc=1
+ALL-END 2026-11-11T15:45:05.937977+00:00 status=fail rc=1
