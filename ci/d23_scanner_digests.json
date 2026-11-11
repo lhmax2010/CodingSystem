@@ -3,6 +3,6 @@
   "reason": "仅扫描器源码与固定签名/分类表的文本信号；摘要变化必须随策略复核。",
   "files": {
     "ci/d23.py": "4b666ccb9d5babf40bd23ef9ebd2203904f871096a5225111c786a274c247798",
-    "ci/d23_policy.json": "63010d83c0e418dd0d95700a67141f258006270cae38f47cf11f361359ac7479"
+    "ci/d23_policy.json": "4f3b5462186c03b02add90689eb5c65e8c153f544a22032627b86bf5ee848f65"
   }
 }
