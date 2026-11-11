@@ -32,7 +32,7 @@
     "docs/review/HLD_v2.9_01_v0.19_review_codex.md": "116b578f04f14651d8f45875ad42458722fca7136f2eb9788dbc91c7ee9111a6",
     "docs/review/HLD_v2.9_01_v0.19_review_kimi.md": "40216018515919f3bf8b5df58465f340f44db7b127efa42e7519154ad81bddb3",
     "docs/review/HLD_v2.9_review_disposition.md": "319c7704e39291951c05ed1febf294b1ecefee4e8b574f27884fa66a7f7e2986",
-    "docs/dev/01_extension_mapping.md": "11290bb84951c827cf31b6bb949ff2560193568166b8bf1007c82b102689c7d8"
+    "docs/dev/01_extension_mapping.md": "f9c5f8c8e440f77501879f4234daf9379f3fec0ed9af67cee686cc908a0965f0"
   },
   "pure_data_reasons": {
     "docs/00_Framework_HLD_v2.10.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
@@ -54,7 +54,7 @@
     "docs/review/HLD_v2.9_01_v0.19_review_codex.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
     "docs/review/HLD_v2.9_01_v0.19_review_kimi.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
     "docs/review/HLD_v2.9_review_disposition.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。",
-    "docs/dev/01_extension_mapping.md": "设计/评审文档或其逐条抽取，只作规范文本阅读；不作为入口、可执行模板或 PHP 输入；逐文件摘要绑定，待本任务评审。"
+    "docs/dev/01_extension_mapping.md": "task-002：设计审定的 B7 批次及 HLD 测试消费映射，仅规范数据，不作为入口/模板/程序输入；更新路径与摘要，随本任务交设计审读。"
   },
   "executable_inputs": []
 }
