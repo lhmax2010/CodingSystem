@@ -165,3 +165,8 @@ uv 固定 `required-version ==0.11.13`，报告记录实际版本。新增依赖
 - 设计定向核对 C1–C3、全部新增内容豁免、3 条放宽项登记及 08 v1.1 门禁落实。
 - 负责人按指南确认 GitHub secret scanning / push protection；本任务未改 GitHub 设置，也未替各方安装 hook。
 - 既有工具版本固定与部署 D23 待办继续，不宣称阶段 gate、Demo 或契约评审已完成。
+
+
+## 2026-11-12 推送失败诊断与凭据恢复
+
+真实证据（本机 / Codex，浏览器授权由负责人完成）见 evidence.txt 同名节。原推送因正常 HOME 下 HTTPS credential helper 未配置而退出 128；gh keyring 登录当时有效，协议记录为 ssh，不能被原 HTTPS Git 推送自动使用。未发现本任务隔离设置影响 push，无法确定此前凭据衔接何时变化。按负责人授权完成网页登录与 gh auth setup-git，HTTPS helper 已指向 gh；只使用这一条命令改变全局 Git 配置。恢复后的 pull --rebase 成功。诊断补记与 pre-push 检查不改变已提交实现或既有门禁证据。

@@ -155,3 +155,91 @@ exit=0
 最终交付提交信息在提交前另经 content-stdin 检查：
 exit=0
 提交后还将对实际全部待推送提交重新手动运行模板；本节是写入交付前对实现提交、最终工作树内容与预定交付提交信息的检查原始结果。
+
+
+2026-11-12 推送失败诊断与凭据恢复
+证据等级：真实（本机 / Codex），浏览器授权由负责人操作。诊断使用与失败 push 相同的 bash login 启动方式、同一仓库、nice -n 19 ionice -c3；全部串行。未记录任何令牌或一次性验证码。
+
+原失败命令：nice -n 19 ionice -c3 git push origin main
+原始结果：fatal: could not read Username for 'https://github.com': No such device or address
+exit=128。失败后没有盲目重试。
+
+只读诊断：
+$ echo "$HOME"
+/home/linhao
+环境变量存在性（不输出值；全部 GIT_ 前缀实际存在的变量只有下列 GIT_PAGER）：
+GIT_PAGER：存在
+GH_TOKEN：不存在
+GITHUB_TOKEN：不存在
+XDG_CONFIG_HOME：不存在
+GIT_CONFIG_GLOBAL：不存在
+GIT_CONFIG_NOSYSTEM：不存在
+GIT_TERMINAL_PROMPT：不存在
+
+$ git config --show-origin --get-all credential.helper
+（空输出）
+exit=1
+$ git remote -v
+origin  https://github.com/lhmax2010/CodingSystem.git (fetch)
+origin  https://github.com/lhmax2010/CodingSystem.git (push)
+$ gh auth status
+（以下为去除令牌字段值后的输出）
+github.com
+  ✓ Logged in to github.com account lhmax2010 (keyring)
+  - Active account: true
+  - Git operations protocol: ssh
+  - Token: [REDACTED]
+  - Token scopes: 'gist', 'read:org', 'repo'
+exit=0
+
+git status --short：空；HEAD 25e3997db6864b808ceef55426b7544b7a3cb798。
+源码核对范围：ci/、tests/、conftest.py（git grep）。HOME、XDG_CONFIG_HOME、GIT_CONFIG_GLOBAL、GIT_CONFIG_NOSYSTEM、GIT_TERMINAL_PROMPT、GIT_ASKPASS 均无设置命中。gate 只在子进程中设置检查所需环境；原 push 直接由正常 login shell 调用，没有经过 gate 包装。没有证据表明 task-004 隔离设置改变推送环境。
+辅助查询曾误组合 --show-origin 与 --get-urlmatch，当前 Git 拒绝此只读选项组合；随后改用受支持的 --get-regexp / --get-urlmatch 分别验证，没有修改配置。
+
+原因：正常 HOME 下 Git 的 HTTPS 远端未配置 credential helper，无法调用 gh keyring 中已存在且有效的凭据；无终端输入时 Git 无法取得用户名。gh 的协议记录当时为 ssh，但实际 origin 为 https。能够确认当前衔接缺失，不能据此确定 task-003 之后它何时或为何缺失；不将既有 gh 登录误记为过期。
+
+负责人授权下处理：
+$ nice -n 19 ionice -c3 gh auth login --hostname github.com --git-protocol https --web
+第一轮登录窗口被负责人关闭；按其要求中止旧等待、重新运行相同命令并触发浏览器。负责人只在窗口授权，没有在终端输入凭据。
+✓ Authentication complete.
+- gh config set -h github.com git_protocol https
+✓ Configured git protocol
+✓ Logged in as lhmax2010
+! You were already logged in to this account
+exit=0
+$ nice -n 19 ionice -c3 gh auth setup-git
+（空输出）
+exit=0
+此命令是本次唯一获授权并执行的全局 Git 配置修改；未手工写配置、未改 origin、未安装 hook。
+
+$ git config --show-origin --get-regexp '^credential(\..*)?\.helper$'
+file:/home/linhao/.gitconfig credential.https://github.com.helper （空值，清除此前 helper 链）
+file:/home/linhao/.gitconfig credential.https://github.com.helper !/home/linhao/.local/bin/gh auth git-credential
+file:/home/linhao/.gitconfig credential.https://gist.github.com.helper （空值，清除此前 helper 链）
+file:/home/linhao/.gitconfig credential.https://gist.github.com.helper !/home/linhao/.local/bin/gh auth git-credential
+$ git config --get-urlmatch credential.helper https://github.com
+!/home/linhao/.local/bin/gh auth git-credential
+$ gh auth status
+（令牌字段值已去除）
+github.com
+  ✓ Logged in to github.com account lhmax2010 (keyring)
+  - Active account: true
+  - Git operations protocol: https
+  - Token: [REDACTED]
+  - Token scopes: 'gist', 'read:org', 'repo', 'workflow'
+exit=0
+$ nice -n 19 ionice -c3 git pull --rebase
+Current branch main is up to date.
+exit=0
+
+本次只补记诊断与恢复，不改实现、策略、豁免或既有 gate report，不重跑完整门禁。推送前重新手动扫描工作树及待推送提交信息，结果续记于下方；实际推送结果与远端 HEAD 在本次会话最终回复核实。
+
+恢复后推送前手动扫描（L0.5；待提交诊断记录包含在工作树扫描内）：
+$ bash ci/hooks/pre-push origin
+stdin: refs/heads/main 25e3997db6864b808ceef55426b7544b7a3cb798 refs/heads/main 25a5c2b6990df587868b3a9af9e8647ea8531ec9
+Current content findings: 0
+Pre-push commits checked: 2; result=pass
+exit=0
+诊断补记提交信息另经 python3.12 -B -m ci.checks content-stdin：
+exit=0
+补记提交后对实际完整待推送提交集合再执行模板；若失败立即停止，不推送。

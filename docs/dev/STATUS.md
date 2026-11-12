@@ -11,7 +11,7 @@
 | task-001 | 08 初稿、仓库骨架、门禁与开发记录 | 实现完成；本地门禁通过，待外部评审 | 4f6ce82ef55cf11c17aa5466735a2f89bcea782a；交付提交 38ed660cd7a4df8c3021d1d0ccde0ab580f91287 | docs/dev/deliver/task-001/ |
 | task-002 | task-001 审读修正与批次审定 | 本地门禁通过，待审读 | 1b6775e8c7a85e7215250d1ef7942c88c3fa802d；交付提交 7ab70a28e5d57c3c427870f8f2176688616b1547 | docs/dev/deliver/task-002/ |
 | task-003 | M0a 处置、08 v1.1 / 09 v0.5、映射与 gate 对照表 | 文档修订完成；L1 1–7 通过、8/9 跳过，待外部审读；第 6 项不作 D23 证据 | bad2eab247a4e1d6ed939c0b3a7ad73099867367；交付 25a5c2b6990df587868b3a9af9e8647ea8531ec9 | docs/dev/deliver/task-003/ |
-| task-004 | M0a C1–C10 / E1–E5 门禁加固 | L1 第 1–9 项通过，10/11 跳过；待定向核对 | 8151478b42062be343e058238e8048a6f83d2b62；交付为本文件所在提交 | docs/dev/deliver/task-004/ |
+| task-004 | M0a C1–C10 / E1–E5 门禁加固 | L1 第 1–9 项通过，10/11 跳过；待定向核对 | 8151478b42062be343e058238e8048a6f83d2b62；交付 25e3997db6864b808ceef55426b7544b7a3cb798；推送诊断补记为本文件所在提交 | docs/dev/deliver/task-004/ |
 
 ## 3. 已闭合结论
 
@@ -73,6 +73,8 @@ task-003 已完成文档自查：75 条 HLD 原文保持；102 个叶键各属�
 - task-002 核对命令与输出见 deliver/task-002/evidence.txt；历史 task-001 证据保持原样。门禁必须用 ci/gate.sh task-NNN，已提交的报告不覆盖。
 
 - task-004 重建仍为系统 Python 3.12.3、原锁文件与 26 个分发；旧虚拟环境保留在仓库同级 .CodingSystem-task004-venv-before-rebuild。实际 L1 限额、优先级已核实；本机 network-namespace: off，socket 禁网夹具生效。详见 deliver/task-004/evidence.txt 与 gate_report.txt。
+
+- 2026-11-12 推送诊断：正常 HOME 的 HTTPS credential helper 原为空，gh keyring 登录有效；未发现 task-004 隔离影响 push。按负责人授权完成网页登录及 gh auth setup-git，helper 已衔接 gh，pull --rebase 成功。证据见 deliver/task-004/evidence.txt 的“2026-11-12 推送失败诊断与凭据恢复”节；既有门禁结果保持。
 
 ## 7. 设计问题清单
 
