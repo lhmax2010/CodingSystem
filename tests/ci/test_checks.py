@@ -179,7 +179,7 @@ def test_expanded_content_signals() -> None:
                 "a" * 12,
             ]
         ],
-        "authorization-bearer": ["Authorization: " + "Bear" + "er " + "a" * 12],
+        "authorization-bearer": ["Authorization: " + "Bear" + "er " + "a" * 15 + "1"],
         "private-ipv4": ["10." + "2.3.4."],
         "perforce-path": [
             "/" + "/" + name + "/product/file" for name in ["SHARED", "Depot", "Other"]
@@ -190,3 +190,30 @@ def test_expanded_content_signals() -> None:
             assert checks.content_hits(value.encode(), {rule: rules[rule]}), rule
     for value in ["10." + "1.2.3.4", "https://example.com/product/file"]:
         assert not checks.content_hits(value.encode(), rules)
+
+
+@pytest.mark.unit
+def test_bearer_token_shape() -> None:
+    rules = checks.json_file("ci/content_policy.json")["rules"]
+    rule = "authorization-bearer"
+    prefix = "bear" + "er "
+    negatives = [
+        prefix + "token",
+        prefix + "principal",
+        "(" + prefix + "principal, endpoint)",
+        prefix + "a" * 14 + "1",
+        prefix + "a" * 16,
+        prefix + "a" * 16 + " 1",
+        prefix + "a" * 15 + "\u212a" + "1",
+    ]
+    for sample in negatives:
+        if checks.content_hits(sample.encode(), {rule: rules[rule]}):
+            pytest.fail(rule, pytrace=False)
+    for token in ["a" * 15 + "1", "1" + "a" * 15, "a" * 20 + "1", "a" * 8 + "._~+/=-1"]:
+        for word in ["bear" + "er", "BEAR" + "ER", "BeAr" + "Er"]:
+            for separator in [" ", "\t"]:
+                for quote in ["", '"', "'"]:
+                    sample = "Authorization: " + quote + word + separator + token + quote
+                    hits = checks.content_hits(sample.encode(), {rule: rules[rule]})
+                    if hits != [(rule, 1)]:
+                        pytest.fail(rule, pytrace=False)

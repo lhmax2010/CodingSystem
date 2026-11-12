@@ -33,7 +33,7 @@ def test_local_push_hook(location: str, tmp_path: Path) -> None:
     assert git("init", "--bare", "-q", str(remote)).returncode == 0
     shutil.copytree(ROOT / "ci", repo / "ci", ignore=shutil.ignore_patterns("__pycache__"))
     (repo / "ci/content_exemptions.json").write_text(
-        '{"version":"task-004-content-v2","entries":[]}'
+        '{"version":"task-005-content-v3","entries":[]}'
     )
     assert git("config", "core.hooksPath", "ci/hooks").returncode == 0
     assert git("remote", "add", "origin", str(remote)).returncode == 0
