@@ -1,0 +1,96 @@
+task-005 开场与实现证据（2026-11-12）
+环境：开发机 / Codex，命令均 nice -n 19 ionice -c3，串行；脚本/单文件测试 L0.5（CPUQuota=100%、MemoryMax=2G、MemorySwapMax=0），完整门禁 L1。
+开场读取 docs/dev/STATUS.md 与 08 v1.1；STATUS task-004 推送诊断补记与 HEAD 一致。
+$ git status --short
+（空）
+$ git branch --show-current
+main
+$ git log -1 --format='%H %s'
+d61a81872d0b4a68befcc3b0d65ef14a62329268 docs: record task-004 push authentication diagnosis
+$ git remote -v
+origin https://github.com/lhmax2010/CodingSystem.git (fetch)
+origin https://github.com/lhmax2010/CodingSystem.git (push)
+$ git pull --rebase
+Already up to date.
+
+旧目录只读核对：
+/home/linhao/Toolchain/development/.CodingSystem-task004-venv-before-rebuild
+Resolved target: /home/linhao/Toolchain/development/.CodingSystem-task004-venv-before-rebuild
+Directory: true; symlink: false; expected parent: true
+Device: 2049 inode: 795631
+$ du -sh -- /home/linhao/Toolchain/development/.CodingSystem-task004-venv-before-rebuild
+111M
+$ du -sB1 -- /home/linhao/Toolchain/development/.CodingSystem-task004-venv-before-rebuild
+115593216
+
+新规则全量跟踪文件扫描（原始结果，只列定位，不含匹配值）：
+Tracked files: 268
+Raw matched locations: 21; unapproved: 0
+task-004 added: 91; removed: 90; retained: 1; unchanged earlier entries: 20; total retained: 21
+agents/skeletons/tests/test_agent_offline.py:15 internal-host
+docs/01_Contract_Spec_v0.10.md:568 internal-host
+docs/01_Contract_Spec_v0.11.md:587 internal-host
+docs/01_Contract_Spec_v0.12.md:607 internal-host
+docs/01_Contract_Spec_v0.13.md:626 internal-host
+docs/01_Contract_Spec_v0.14.md:630 internal-host
+docs/01_Contract_Spec_v0.15.md:635 internal-host
+docs/01_Contract_Spec_v0.16.md:640 internal-host
+docs/01_Contract_Spec_v0.17.md:643 internal-host
+docs/01_Contract_Spec_v0.18.md:654 internal-host
+docs/01_Contract_Spec_v0.19.md:667 internal-host
+docs/01_Contract_Spec_v0.20.md:686 internal-host
+docs/01_Contract_Spec_v0.21.md:690 internal-host
+docs/01_Contract_Spec_v0.22.md:693 internal-host
+docs/01_Contract_Spec_v0.23.md:693 internal-host
+docs/01_Contract_Spec_v0.24.md:694 internal-host
+docs/01_Contract_Spec_v0.7.md:520 internal-host
+docs/01_Contract_Spec_v0.8.md:535 internal-host
+docs/01_Contract_Spec_v0.9.md:566 internal-host
+docs/review/01_v0.7_review_{kimi,claudecode,codex}.md:65 internal-host
+tests/ci/test_offline.py:16 internal-host
+
+旧目录删除（L0.5，使用支持 fd 的防符号链接替换删除）：
+删除前再次核对目录类型、非符号链接、父路径与 device=2049 / inode=795631 全部一致。
+命令：nice -n 19 ionice -c3 systemd-run --user --scope -p CPUQuota=100% -p MemoryMax=2G -p MemorySwapMax=0 nice -n 19 ionice -c3 python3.12 -B -
+核心操作：parent_fd = os.open('/home/linhao/Toolchain/development', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+shutil.rmtree('.CodingSystem-task004-venv-before-rebuild', dir_fd=parent_fd)
+shutil.rmtree.avoids_symlink_attacks = True
+exit=0；目标不存在（含链接检查）；当前仓库 .venv 仍存在；未删除其他路径。
+
+专项验证：
+$ nice -n 19 ionice -c3 systemd-run --user --scope -p CPUQuota=100% -p MemoryMax=2G -p MemorySwapMax=0 nice -n 19 ionice -c3 .venv/bin/python -B -m pytest tests/ci/test_checks.py -q
+......... [100%]
+9 passed in 0.04s
+$ nice -n 19 ionice -c3 systemd-run --user --scope -p CPUQuota=100% -p MemoryMax=2G -p MemorySwapMax=0 nice -n 19 ionice -c3 .venv/bin/ruff format --check tests/ci/test_checks.py
+1 file already formatted
+$ git diff --check
+（空，exit=0）
+
+实现提交后正式门禁：
+$ nice -n 19 ionice -c3 bash ci/gate.sh task-005
+PREFLIGHT {"at": 1794469204.1270676, "available": 17282, "cores": 20, "load": 2.39, "waited": 0.0056266350438818336}
+Task: task-005
+HEAD: d2545631651ce540c7559ea0cb51f150132a5dbb
+Tree: 133f13ae3d79c1524af9c39e9fbdf21fb2903645
+Time: 2026-11-12T07:40:05.110543+00:00
+Attempt: docs/dev/deliver/task-005/gate_report.attempt-001.txt
+Resources actual: cpu.max=200000 100000; memory.max=3221225472; memory.swap.max=0; nice=19; ionice=idle
+215 passed, 2 skipped in 6.34s
+Global line coverage: 87.18% >= 80%
+D23 installed distributions: 26; failures: 0
+Current content findings: 0
+Bypass registrations: 3; detected: 3
+Provisional annotations: 0; keys: []
+GATE 10-contract SKIP elapsed=0s 尚无契约模型；将来比较 01 §0.3 契约包版本，非文档草案号
+GATE 11-cf SKIP elapsed=0s 尚无 CF 实现；契约基线采用 01 §0.3 契约包版本
+ALL-END 2026-11-12T07:40:25.911211+00:00 status=ok rc=0
+完整原始输出见 gate_report.attempt-001.txt；gate_report.txt 与其逐字节相同。
+SHA256 gate_report.txt / attempt-001: 221c5343e32e32e32a612fb97fe23bac6b74a2d742a8fb5b081a45a03f608ef9
+
+交付提交前手动 pre-push（L0.5，覆盖当前工作树）：
+$ bash ci/hooks/pre-push origin
+stdin: refs/heads/main d2545631651ce540c7559ea0cb51f150132a5dbb refs/heads/main d61a81872d0b4a68befcc3b0d65ef14a62329268
+Current content findings: 0
+Pre-push commits checked: 1; result=pass
+exit=0
+预定交付提交信息经 content-stdin 检查，exit=0；提交及 pull --rebase 后对实际待推送提交再执行模板，未通过不推送。
